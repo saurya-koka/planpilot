@@ -4,6 +4,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from typing import Optional
+
+
 
 class PlanRequest(BaseModel):
     city: str = "Boston"
@@ -46,3 +49,22 @@ class Itinerary(BaseModel):
     score: float
     reasons: list[str]
     warnings: list[str]
+
+
+
+class NaturalLanguageRequest(BaseModel):
+    text: str
+
+
+class ParsedPlanRequest(BaseModel):
+    city: str = "Boston"
+    budget: float = 200
+    party_size: int = 2
+    max_travel_minutes: int = 30
+    vibe: str = "romantic"
+    include_activity: bool = True
+    include_dinner: bool = True
+    include_dessert: bool = False
+    transportation: str = "public_transit"
+    start_time: Optional[str] = None
+    date_text: Optional[str] = None

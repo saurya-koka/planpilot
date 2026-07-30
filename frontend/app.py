@@ -64,3 +64,32 @@ if submitted:
         if result.get("llm_explanation"):
             st.subheader("PlanPilot explanation")
             st.write(result["llm_explanation"])
+
+st.subheader("Describe your outing")
+
+natural_language_request = st.text_area(
+    "Tell PlanPilot what you want",
+    placeholder=(
+        "Plan a romantic date in Boston this Friday after 5 PM "
+        "for two people under $180 with dinner and dessert."
+    ),
+)
+
+if st.button("Understand my request"):
+    if not natural_language_request.strip():
+        st.warning("Enter a request first.")
+    else:
+        try:
+            response = requests.post(
+                f"{BACKEND_URL}/parse-request",
+                json={"text": natural_language_request},
+                timeout=30,
+            )
+            response.raise_for_status()
+            parsed = response.json()
+
+            st.success("Request understood")
+            st.json(parsed)
+
+        except requests.RequestException as exc:
+            st.error(f"Could not parse the request: {exc}")

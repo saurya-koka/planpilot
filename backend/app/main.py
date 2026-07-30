@@ -4,6 +4,9 @@ from .llm import explain_plan_with_llm, llm_is_configured
 from .models import PlanRequest
 from .planner import build_plans
 
+from backend.app.llm import parse_natural_language_request
+from backend.app.models import NaturalLanguageRequest, ParsedPlanRequest
+
 app = FastAPI(title="PlanPilot API", version="0.1.0")
 
 
@@ -23,3 +26,7 @@ def create_plans(request: PlanRequest) -> dict:
         "llm_explanation": explanation,
         "data_notice": "V1 uses sample venue and route data. Live APIs arrive in Phase 2.",
     }
+
+@app.post("/parse-request", response_model=ParsedPlanRequest)
+def parse_request(payload: NaturalLanguageRequest) -> ParsedPlanRequest:
+    return parse_natural_language_request(payload.text)
