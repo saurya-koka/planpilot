@@ -7,6 +7,11 @@ from .models import Itinerary, PlanRequest, Stop, Venue
 
 
 def travel_minutes(area_a: str, area_b: str) -> int:
+    """
+    Return a temporary travel-time estimate between two areas.
+
+    Live routing will replace this lookup table in a later phase.
+    """
     if area_a == area_b:
         return 8
 
@@ -23,6 +28,12 @@ def venue_matches_food(
     venue: Venue,
     preferences: list[str],
 ) -> bool:
+    """
+    Check whether a restaurant matches at least one requested
+    food preference.
+
+    Non-restaurant venues always pass this check.
+    """
     if venue.category != "restaurant" or not preferences:
         return True
 
@@ -42,6 +53,9 @@ def venue_matches_food(
 def get_requested_categories(
     request: PlanRequest,
 ) -> list[str]:
+    """
+    Convert user-facing categories into Venue category names.
+    """
     categories: list[str] = []
 
     if "activity" in request.must_include:
@@ -65,10 +79,15 @@ def get_requested_categories(
 def get_candidates(
     category: str,
     request: PlanRequest,
+    venues: list[Venue],
 ) -> list[Venue]:
+    """
+    Filter the supplied venue collection by requested category
+    and food preferences.
+    """
     candidates = [
         venue
-        for venue in VENUES
+        for venue in venues
         if venue.category == category
     ]
 
@@ -89,6 +108,9 @@ def calculate_vibe_overlap(
     venues: list[Venue],
     requested_vibes: list[str],
 ) -> int:
+    """
+    Count how many requested vibe tags appear across the venues.
+    """
     requested = {
         vibe.lower()
         for vibe in requested_vibes
@@ -108,13 +130,30 @@ def calculate_vibe_overlap(
 
 def build_candidate_plans(
     request: PlanRequest,
+    venues: list[Venue] | None = None,
 ) -> list[Itinerary]:
+    """
+    Build every valid itinerary combination from either:
+
+    - custom live venues supplied by the caller, or
+    - the original mock VENUES dataset.
+    """
+    candidate_source = (
+        venues
+        if venues is not None
+        else VENUES
+    )
+
     requested_categories = get_requested_categories(
         request
     )
 
     candidate_groups = [
-        get_candidates(category, request)
+        get_candidates(
+            category=category,
+            request=request,
+            venues=candidate_source,
+        )
         for category in requested_categories
     ]
 
@@ -129,13 +168,13 @@ def build_candidate_plans(
     for selected_venues in product(
         *candidate_groups
     ):
-        venues = list(selected_venues)
+        chosen_venues = list(selected_venues)
 
         route_areas = [
             request.start_area,
             *[
                 venue.area
-                for venue in venues
+                for venue in chosen_venues
             ],
         ]
 
@@ -155,14 +194,14 @@ def build_candidate_plans(
             request.party_size
             * sum(
                 venue.estimated_cost_per_person
-                for venue in venues
+                for venue in chosen_venues
             )
         )
 
         total_duration = (
             sum(
                 venue.duration_minutes
-                for venue in venues
+                for venue in chosen_venues
             )
             + total_travel
         )
@@ -191,8 +230,8 @@ def build_candidate_plans(
             )
 
         vibe_overlap = calculate_vibe_overlap(
-            venues,
-            request.vibe,
+            venues=chosen_venues,
+            requested_vibes=request.vibe,
         )
 
         budget_penalty = max(
@@ -240,12 +279,12 @@ def build_candidate_plans(
                     venue.duration_minutes
                 ),
             )
-            for venue in venues
+            for venue in chosen_venues
         ]
 
         title = " → ".join(
             venue.name
-            for venue in venues
+            for venue in chosen_venues
         )
 
         plans.append(
@@ -278,6 +317,9 @@ def build_candidate_plans(
 def plan_signature(
     plan: Itinerary,
 ) -> tuple[str, ...]:
+    """
+    Return a stable identifier for an itinerary's venue sequence.
+    """
     return tuple(
         stop.name
         for stop in plan.stops
@@ -287,7 +329,15 @@ def plan_signature(
 def select_distinct_plans(
     plans: list[Itinerary],
     request: PlanRequest,
+    venue_source: list[Venue],
 ) -> list[Itinerary]:
+    """
+    Select three intentionally different options:
+
+    1. Best overall
+    2. Lowest cost
+    3. Best vibe match
+    """
     if not plans:
         return []
 
@@ -304,6 +354,7 @@ def select_distinct_plans(
     )
 
     selected: list[Itinerary] = []
+
     used_signatures: set[
         tuple[str, ...]
     ] = set()
@@ -319,10 +370,12 @@ def select_distinct_plans(
             return
 
         plan.label = label
-        plan.reasons.insert(
-            0,
-            reason,
-        )
+
+        if reason not in plan.reasons:
+            plan.reasons.insert(
+                0,
+                reason,
+            )
 
         selected.append(plan)
         used_signatures.add(signature)
@@ -379,30 +432,32 @@ def select_distinct_plans(
             for vibe in request.vibe
         }
 
+        venue_lookup = {
+            venue.name: venue
+            for venue in venue_source
+        }
+
         def vibe_score(
             plan: Itinerary,
         ) -> tuple[int, float]:
             overlap = 0
 
             for stop in plan.stops:
-                matching_venue = next(
-                    (
-                        venue
-                        for venue in VENUES
-                        if venue.name == stop.name
-                    ),
-                    None,
+                matching_venue = venue_lookup.get(
+                    stop.name
                 )
 
-                if matching_venue:
-                    overlap += len(
-                        {
-                            vibe.lower()
-                            for vibe
-                            in matching_venue.vibe
-                        }
-                        & requested_vibes
-                    )
+                if matching_venue is None:
+                    continue
+
+                overlap += len(
+                    {
+                        vibe.lower()
+                        for vibe
+                        in matching_venue.vibe
+                    }
+                    & requested_vibes
+                )
 
             return (
                 overlap,
@@ -444,17 +499,18 @@ def select_distinct_plans(
         if len(selected) >= 3:
             break
 
-        label = fallback_labels[
-            min(
-                len(selected),
-                len(fallback_labels) - 1,
-            )
-        ]
+        label_index = min(
+            len(selected),
+            len(fallback_labels) - 1,
+        )
 
         add_plan(
             plan,
-            label,
-            "A strong alternative based on the current constraints.",
+            fallback_labels[label_index],
+            (
+                "A strong alternative based "
+                "on the current constraints."
+            ),
         )
 
     return selected[:3]
@@ -462,12 +518,24 @@ def select_distinct_plans(
 
 def build_plans(
     request: PlanRequest,
+    venues: list[Venue] | None = None,
 ) -> list[Itinerary]:
+    """
+    Build and rank itineraries using mock or live venue candidates.
+    """
+    venue_source = (
+        venues
+        if venues is not None
+        else VENUES
+    )
+
     candidate_plans = build_candidate_plans(
-        request
+        request=request,
+        venues=venue_source,
     )
 
     return select_distinct_plans(
-        candidate_plans,
-        request,
+        plans=candidate_plans,
+        request=request,
+        venue_source=venue_source,
     )

@@ -12,6 +12,9 @@ from .models import (
     PlanRequest,
 )
 from .planner import build_plans
+from .tools.live_candidates import (
+    build_live_venues_with_fallback,
+)
 from .tools.places import (
     PlaceSearchError,
     geoapify_is_configured,
@@ -21,17 +24,14 @@ from .tools.places import (
 
 app = FastAPI(
     title="PlanPilot API",
-    version="0.3.0",
+    version="0.4.0",
 )
 
 
 @app.get("/")
 def root() -> dict:
     """
-    Basic root endpoint.
-
-    Opening http://127.0.0.1:8000/ confirms that the
-    PlanPilot backend is running.
+    Basic root endpoint confirming that the API is running.
     """
     return {
         "name": "PlanPilot API",
@@ -43,7 +43,7 @@ def root() -> dict:
 @app.get("/health")
 def health() -> dict:
     """
-    Report the status of the backend and external services.
+    Report the status of the backend and integrations.
     """
     return {
         "status": "ok",
@@ -57,10 +57,9 @@ def parsed_to_plan_request(
     payload: NaturalLanguageRequest,
 ) -> PlanRequest:
     """
-    Convert parsed natural-language fields into the structured
-    PlanRequest expected by the deterministic itinerary planner.
+    Convert parsed natural-language fields into the PlanRequest
+    used by the deterministic itinerary planner.
     """
-
     must_include: list[str] = []
 
     if parsed.include_activity:
@@ -72,7 +71,6 @@ def parsed_to_plan_request(
     if parsed.include_dessert:
         must_include.append("dessert")
 
-    # Prevent the planner from receiving an empty itinerary request.
     if not must_include:
         must_include = [
             "activity",
@@ -112,16 +110,13 @@ def parsed_to_plan_request(
     )
 
 
-@app.post("/plans")
-def create_plans(
+def serialize_plans(
     request: PlanRequest,
-) -> dict:
+    plans: list,
+) -> tuple[list[dict], str | None]:
     """
-    Generate itineraries from manually supplied structured fields.
+    Serialize itinerary models and generate an optional explanation.
     """
-
-    plans = build_plans(request)
-
     serialized = [
         plan.model_dump()
         for plan in plans
@@ -134,13 +129,31 @@ def create_plans(
         }
     )
 
+    return serialized, explanation
+
+
+@app.post("/plans")
+def create_plans(
+    request: PlanRequest,
+) -> dict:
+    """
+    Generate itineraries from manually supplied structured fields
+    using the original sample venue data.
+    """
+    plans = build_plans(request)
+
+    serialized, explanation = serialize_plans(
+        request=request,
+        plans=plans,
+    )
+
     return {
         "request": request.model_dump(),
         "plans": serialized,
         "llm_explanation": explanation,
         "data_notice": (
-            "The itinerary planner currently uses sample venue "
-            "and route data. Live place search is being added."
+            "This endpoint currently uses sample venue and "
+            "temporary route data."
         ),
     }
 
@@ -153,9 +166,8 @@ def parse_request(
     payload: NaturalLanguageRequest,
 ) -> ParsedPlanRequest:
     """
-    Parse a natural-language outing request into structured fields.
+    Parse a natural-language request into structured fields.
     """
-
     return parse_natural_language_request(
         payload.text
     )
@@ -166,14 +178,9 @@ def plan_from_text(
     payload: NaturalLanguageRequest,
 ) -> dict:
     """
-    Complete natural-language planning workflow.
-
-    1. Parse the user's message.
-    2. Convert the parsed result into PlanRequest.
-    3. Generate and rank itineraries.
-    4. Optionally generate an LLM explanation.
+    Parse a natural-language request and build plans using
+    the sample venue dataset.
     """
-
     parsed = parse_natural_language_request(
         payload.text
     )
@@ -189,21 +196,14 @@ def plan_from_text(
         raise HTTPException(
             status_code=404,
             detail=(
-                "No matching plans were found using the "
-                "current venue data."
+                "No matching plans were found using "
+                "the sample venue data."
             ),
         )
 
-    serialized = [
-        plan.model_dump()
-        for plan in plans
-    ]
-
-    explanation = explain_plan_with_llm(
-        {
-            "request": request.model_dump(),
-            "plans": serialized,
-        }
+    serialized, explanation = serialize_plans(
+        request=request,
+        plans=plans,
     )
 
     return {
@@ -211,10 +211,76 @@ def plan_from_text(
         "parsed_request": parsed.model_dump(),
         "planning_request": request.model_dump(),
         "plans": serialized,
+        "used_live_data": False,
         "llm_explanation": explanation,
         "data_notice": (
-            "The itinerary planner currently uses sample venue "
-            "and route data. Live place search is being added."
+            "This endpoint uses sample venue and "
+            "temporary route data."
+        ),
+    }
+
+
+@app.post("/plan-from-text/live")
+def plan_from_text_live(
+    payload: NaturalLanguageRequest,
+) -> dict:
+    """
+    Generate itineraries using live Geoapify place candidates.
+
+    If Geoapify is unavailable or returns no results, PlanPilot
+    falls back to the original sample venue dataset.
+    """
+    parsed = parse_natural_language_request(
+        payload.text
+    )
+
+    request = parsed_to_plan_request(
+        parsed=parsed,
+        payload=payload,
+    )
+
+    venues, used_live_data = (
+        build_live_venues_with_fallback(
+            request
+        )
+    )
+
+    plans = build_plans(
+        request=request,
+        venues=venues,
+    )
+
+    if not plans:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "No matching live or fallback plans "
+                "were found."
+            ),
+        )
+
+    serialized, explanation = serialize_plans(
+        request=request,
+        plans=plans,
+    )
+
+    return {
+        "original_text": payload.text,
+        "parsed_request": parsed.model_dump(),
+        "planning_request": request.model_dump(),
+        "plans": serialized,
+        "used_live_data": used_live_data,
+        "venue_candidate_count": len(venues),
+        "llm_explanation": explanation,
+        "data_notice": (
+            "Live Geoapify place candidates were used. "
+            "Costs, durations, vibes, and travel times are "
+            "currently estimated."
+            if used_live_data
+            else (
+                "Geoapify was unavailable or returned no "
+                "candidates, so sample venue data was used."
+            )
         ),
     }
 
@@ -224,9 +290,8 @@ def search_live_places(
     payload: PlaceSearchRequest,
 ) -> dict:
     """
-    Search for live places using the configured Geoapify provider.
+    Search Geoapify directly for live places.
     """
-
     try:
         places = search_places(
             query=payload.query,
