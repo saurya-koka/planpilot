@@ -4,8 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from typing import Optional
 
+TransportMode = Literal["public_transit", "walking", "driving"]
 
 
 class PlanRequest(BaseModel):
@@ -15,10 +15,14 @@ class PlanRequest(BaseModel):
     start_time: str = "17:00"
     budget_total: float = Field(default=200, gt=0)
     party_size: int = Field(default=2, ge=1, le=12)
-    transport: Literal["public_transit", "walking", "driving"] = "public_transit"
+    transport: TransportMode = "public_transit"
     vibe: list[str] = Field(default_factory=lambda: ["romantic", "fun"])
-    must_include: list[str] = Field(default_factory=lambda: ["activity", "dinner"])
-    food_preferences: list[str] = Field(default_factory=lambda: ["chicken options"])
+    must_include: list[str] = Field(
+        default_factory=lambda: ["activity", "dinner"]
+    )
+    food_preferences: list[str] = Field(
+        default_factory=lambda: ["chicken options"]
+    )
     max_leg_minutes: int = Field(default=30, ge=5, le=180)
 
 
@@ -51,20 +55,21 @@ class Itinerary(BaseModel):
     warnings: list[str]
 
 
-
 class NaturalLanguageRequest(BaseModel):
     text: str
+    start_area: str = "Davis Square"
+    food_preferences: list[str] = Field(default_factory=list)
 
 
 class ParsedPlanRequest(BaseModel):
     city: str = "Boston"
-    budget: float = 200
-    party_size: int = 2
-    max_travel_minutes: int = 30
+    budget: float = Field(default=200, gt=0)
+    party_size: int = Field(default=2, ge=1, le=12)
+    max_travel_minutes: int = Field(default=30, ge=5, le=180)
     vibe: str = "romantic"
     include_activity: bool = True
     include_dinner: bool = True
     include_dessert: bool = False
     transportation: str = "public_transit"
-    start_time: Optional[str] = None
-    date_text: Optional[str] = None
+    start_time: str | None = None
+    date_text: str | None = None
