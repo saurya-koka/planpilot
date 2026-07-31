@@ -90,7 +90,11 @@ def parsed_to_plan_request(
         transport=transport,
         vibe=[parsed.vibe],
         must_include=must_include,
-        food_preferences=payload.food_preferences,
+        food_preferences=(
+    		parsed.food_preferences
+    		if parsed.food_preferences
+    		else payload.food_preferences
+		),
         max_leg_minutes=parsed.max_travel_minutes,
     )
 

@@ -73,3 +73,4 @@ class ParsedPlanRequest(BaseModel):
     transportation: str = "public_transit"
     start_time: str | None = None
     date_text: str | None = None
+    food_preferences: list[str] = Field(default_factory=list)
