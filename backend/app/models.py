@@ -75,3 +75,22 @@ class ParsedPlanRequest(BaseModel):
     start_time: str | None = None
     date_text: str | None = None
     food_preferences: list[str] = Field(default_factory=list)
+
+class PlaceSearchRequest(BaseModel):
+    query: str
+    city: str = "Boston"
+    category: str | None = None
+    limit: int = Field(default=10, ge=1, le=20)
+
+
+class PlaceResult(BaseModel):
+    place_id: str
+    name: str
+    formatted_address: str
+    latitude: float
+    longitude: float
+    categories: list[str] = Field(default_factory=list)
+    distance_meters: int | None = None
+    opening_hours: str | None = None
+    website: str | None = None
+    source: str = "geoapify"
