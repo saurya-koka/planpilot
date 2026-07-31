@@ -45,6 +45,7 @@ class Stop(BaseModel):
 
 
 class Itinerary(BaseModel):
+    label: str
     title: str
     stops: list[Stop]
     total_cost: float

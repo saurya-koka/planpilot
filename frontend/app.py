@@ -41,8 +41,8 @@ def render_plans(result: dict) -> None:
     for index, plan in enumerate(plans, start=1):
         with st.container(border=True):
             st.subheader(
-                f"Option {index}: {plan['title']}"
-            )
+    			f"{plan['label']}: {plan['title']}"
+)
 
             metric1, metric2, metric3 = st.columns(3)
 
