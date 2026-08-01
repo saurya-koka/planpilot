@@ -38,12 +38,18 @@ def _clean_text(value: str) -> str:
 
 def _infer_area(place: PlaceResult) -> str:
     """
-    Infer a short area label from the formatted address.
-
-    This is temporary. A future version will store neighborhood
-    information directly from the provider response.
+    Choose the most useful neighborhood-level label available.
     """
-    address = place.formatted_address
+    if place.suburb:
+        return place.suburb
+
+    if place.district:
+        return place.district
+
+    if place.city:
+        return place.city
+
+    address = place.formatted_address.lower()
 
     known_areas = [
         "North End",
@@ -60,17 +66,11 @@ def _infer_area(place: PlaceResult) -> str:
         "Beacon Hill",
     ]
 
-    lowered = address.lower()
-
     for area in known_areas:
-        if area.lower() in lowered:
+        if area.lower() in address:
             return area
 
-    if "boston" in lowered:
-        return "Boston"
-
     return "Unknown area"
-
 
 def _infer_activity_cost(place: PlaceResult) -> float:
     text = _clean_text(
@@ -357,6 +357,12 @@ def place_to_venue(
             if category == "restaurant"
             else []
         ),
+        latitude=place.latitude,
+        longitude=place.longitude,
+        formatted_address=place.formatted_address,
+        website=place.website,
+        opening_hours=place.opening_hours,
+        source=place.source,
     )
 
 

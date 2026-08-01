@@ -266,21 +266,25 @@ def build_candidate_plans(
         ]
 
         stops = [
-            Stop(
-                name=venue.name,
-                category=venue.category,
-                area=venue.area,
-                estimated_cost=round(
-                    venue.estimated_cost_per_person
-                    * request.party_size,
-                    2,
-                ),
-                duration_minutes=(
-                    venue.duration_minutes
-                ),
-            )
-            for venue in chosen_venues
-        ]
+    		Stop(
+        		name=venue.name,
+       		 	category=venue.category,
+        		area=venue.area,
+        		estimated_cost=round(
+            		venue.estimated_cost_per_person
+            		* request.party_size,
+            		2,
+        		),
+        		duration_minutes=venue.duration_minutes,
+        		latitude=venue.latitude,
+        		longitude=venue.longitude,
+       		 	formatted_address=venue.formatted_address,
+        		website=venue.website,
+        		opening_hours=venue.opening_hours,
+        		source=venue.source,
+    		)
+    		for venue in chosen_venues
+		]
 
         title = " → ".join(
             venue.name

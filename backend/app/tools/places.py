@@ -504,26 +504,42 @@ def _extract_name(
 def _normalize_place(
     feature: dict[str, Any],
 ) -> PlaceResult:
+    """
+    Convert one Geoapify GeoJSON feature into PlaceResult.
+    """
     properties = feature.get(
         "properties",
         {},
     )
+
+    if not isinstance(properties, dict):
+        properties = {}
 
     geometry = feature.get(
         "geometry",
         {},
     )
 
+    if not isinstance(geometry, dict):
+        geometry = {}
+
     coordinates = geometry.get(
         "coordinates",
         [0, 0],
     )
 
-    if not isinstance(coordinates, list) or len(coordinates) < 2:
+    if (
+        not isinstance(coordinates, list)
+        or len(coordinates) < 2
+    ):
         coordinates = [0, 0]
 
-    longitude = float(coordinates[0])
-    latitude = float(coordinates[1])
+    try:
+        longitude = float(coordinates[0])
+        latitude = float(coordinates[1])
+    except (TypeError, ValueError):
+        longitude = 0.0
+        latitude = 0.0
 
     categories = properties.get(
         "categories",
@@ -587,6 +603,36 @@ def _normalize_place(
             str(category)
             for category in categories
         ],
+        city=(
+            str(properties["city"])
+            if properties.get("city")
+            else None
+        ),
+        district=(
+            str(properties["district"])
+            if properties.get("district")
+            else None
+        ),
+        suburb=(
+            str(properties["suburb"])
+            if properties.get("suburb")
+            else None
+        ),
+        postcode=(
+            str(properties["postcode"])
+            if properties.get("postcode")
+            else None
+        ),
+        state=(
+            str(properties["state"])
+            if properties.get("state")
+            else None
+        ),
+        country=(
+            str(properties["country"])
+            if properties.get("country")
+            else None
+        ),
         distance_meters=distance,
         opening_hours=(
             str(opening_hours)
