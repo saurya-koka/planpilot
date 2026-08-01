@@ -648,11 +648,16 @@ def _normalize_place(
     )
 
 
-def geocode_city(
-    city: str,
+def geocode_location(
+    location: str,
+    location_type: str | None = None,
 ) -> tuple[float, float]:
     """
-    Convert a city or location name into latitude and longitude.
+    Convert a location name or address into coordinates.
+
+    location_type can be set to values such as "city". For
+    neighborhood searches such as Davis Square, it should remain
+    None so Geoapify can determine the location type.
     """
     api_key = os.getenv(
         "GEOAPIFY_API_KEY"
@@ -663,18 +668,22 @@ def geocode_city(
             "GEOAPIFY_API_KEY is not configured."
         )
 
+    params: dict[str, str | int] = {
+        "text": location,
+        "limit": 1,
+        "format": "json",
+        "apiKey": api_key,
+    }
+
+    if location_type:
+        params["type"] = location_type
+
     response: requests.Response | None = None
 
     try:
         response = requests.get(
             GEOAPIFY_GEOCODING_URL,
-            params={
-                "text": city,
-                "type": "city",
-                "limit": 1,
-                "format": "json",
-                "apiKey": api_key,
-            },
+            params=params,
             timeout=15,
         )
 
@@ -688,14 +697,14 @@ def geocode_city(
         )
 
         raise PlaceSearchError(
-            f"City geocoding failed: {detail}"
+            f"Location geocoding failed: {detail}"
         ) from exc
 
     try:
         payload = response.json()
     except ValueError as exc:
         raise PlaceSearchError(
-            "City geocoding returned invalid JSON."
+            "Location geocoding returned invalid JSON."
         ) from exc
 
     results = payload.get(
@@ -705,7 +714,7 @@ def geocode_city(
 
     if not results:
         raise PlaceSearchError(
-            f"Could not locate city: {city}"
+            f"Could not locate: {location}"
         )
 
     result = results[0]
@@ -717,9 +726,21 @@ def geocode_city(
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise PlaceSearchError(
-            "City geocoding response did not include "
+            "Location geocoding response did not include "
             "valid coordinates."
         ) from exc
+
+
+def geocode_city(
+    city: str,
+) -> tuple[float, float]:
+    """
+    Convert a city name into latitude and longitude.
+    """
+    return geocode_location(
+        location=city,
+        location_type="city",
+    )
 
 
 def _request_places(

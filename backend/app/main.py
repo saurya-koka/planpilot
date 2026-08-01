@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Any
+
 from fastapi import FastAPI, HTTPException
 
 from .llm import (
@@ -17,21 +21,25 @@ from .tools.live_candidates import (
 )
 from .tools.places import (
     PlaceSearchError,
+    geocode_location,
     geoapify_is_configured,
     search_places,
+)
+from .tools.routing import (
+    haversine_distance_km,
 )
 
 
 app = FastAPI(
     title="PlanPilot API",
-    version="0.4.0",
+    version="0.5.1",
 )
 
 
 @app.get("/")
-def root() -> dict:
+def root() -> dict[str, str]:
     """
-    Basic root endpoint confirming that the API is running.
+    Confirm that the PlanPilot API is running.
     """
     return {
         "name": "PlanPilot API",
@@ -41,9 +49,9 @@ def root() -> dict:
 
 
 @app.get("/health")
-def health() -> dict:
+def health() -> dict[str, bool | str]:
     """
-    Report the status of the backend and integrations.
+    Report backend and integration status.
     """
     return {
         "status": "ok",
@@ -57,8 +65,8 @@ def parsed_to_plan_request(
     payload: NaturalLanguageRequest,
 ) -> PlanRequest:
     """
-    Convert parsed natural-language fields into the PlanRequest
-    used by the deterministic itinerary planner.
+    Convert parsed natural-language fields into the structured
+    PlanRequest used by the deterministic planner.
     """
     must_include: list[str] = []
 
@@ -112,10 +120,11 @@ def parsed_to_plan_request(
 
 def serialize_plans(
     request: PlanRequest,
-    plans: list,
-) -> tuple[list[dict], str | None]:
+    plans: list[Any],
+) -> tuple[list[dict[str, Any]], str | None]:
     """
-    Serialize itinerary models and generate an optional explanation.
+    Serialize itinerary models and generate an optional
+    natural-language explanation.
     """
     serialized = [
         plan.model_dump()
@@ -132,15 +141,53 @@ def serialize_plans(
     return serialized, explanation
 
 
+def geocode_start_area(
+    request: PlanRequest,
+) -> tuple[float, float] | None:
+    """
+    Geocode the user's starting area and reject obviously incorrect
+    matches that are far outside the requested city's metro area.
+    """
+    try:
+        candidate_coordinates = geocode_location(
+            f"{request.start_area}, Massachusetts, USA"
+        )
+
+        city_coordinates = geocode_location(
+            f"{request.city}, Massachusetts, USA",
+            location_type="city",
+        )
+
+        distance_from_city = haversine_distance_km(
+            latitude_a=candidate_coordinates[0],
+            longitude_a=candidate_coordinates[1],
+            latitude_b=city_coordinates[0],
+            longitude_b=city_coordinates[1],
+        )
+
+        # Reject obviously incorrect geocoding matches.
+        if distance_from_city > 60:
+            return None
+
+        return candidate_coordinates
+
+    except PlaceSearchError:
+        return None
+
+
 @app.post("/plans")
 def create_plans(
     request: PlanRequest,
-) -> dict:
+) -> dict[str, Any]:
     """
-    Generate itineraries from manually supplied structured fields
-    using the original sample venue data.
+    Generate itineraries from manually supplied structured fields.
+
+    This endpoint continues to use the original sample venue data
+    and temporary area-based travel estimates.
     """
-    plans = build_plans(request)
+    plans = build_plans(
+        request=request,
+    )
 
     serialized, explanation = serialize_plans(
         request=request,
@@ -150,10 +197,12 @@ def create_plans(
     return {
         "request": request.model_dump(),
         "plans": serialized,
+        "used_live_data": False,
+        "start_coordinates": None,
         "llm_explanation": explanation,
         "data_notice": (
-            "This endpoint currently uses sample venue and "
-            "temporary route data."
+            "This endpoint currently uses sample venue data "
+            "and temporary area-based travel estimates."
         ),
     }
 
@@ -166,7 +215,7 @@ def parse_request(
     payload: NaturalLanguageRequest,
 ) -> ParsedPlanRequest:
     """
-    Parse a natural-language request into structured fields.
+    Parse a natural-language planning request into structured fields.
     """
     return parse_natural_language_request(
         payload.text
@@ -176,7 +225,7 @@ def parse_request(
 @app.post("/plan-from-text")
 def plan_from_text(
     payload: NaturalLanguageRequest,
-) -> dict:
+) -> dict[str, Any]:
     """
     Parse a natural-language request and build plans using
     the sample venue dataset.
@@ -190,7 +239,9 @@ def plan_from_text(
         payload=payload,
     )
 
-    plans = build_plans(request)
+    plans = build_plans(
+        request=request,
+    )
 
     if not plans:
         raise HTTPException(
@@ -212,10 +263,11 @@ def plan_from_text(
         "planning_request": request.model_dump(),
         "plans": serialized,
         "used_live_data": False,
+        "start_coordinates": None,
         "llm_explanation": explanation,
         "data_notice": (
-            "This endpoint uses sample venue and "
-            "temporary route data."
+            "This endpoint uses sample venue data and "
+            "temporary area-based travel estimates."
         ),
     }
 
@@ -223,12 +275,15 @@ def plan_from_text(
 @app.post("/plan-from-text/live")
 def plan_from_text_live(
     payload: NaturalLanguageRequest,
-) -> dict:
+) -> dict[str, Any]:
     """
     Generate itineraries using live Geoapify place candidates.
 
-    If Geoapify is unavailable or returns no results, PlanPilot
-    falls back to the original sample venue dataset.
+    The starting area is geocoded and coordinate-based travel
+    estimates are used when coordinates are available.
+
+    If Geoapify place search fails or returns no candidates, the
+    planner falls back to the original sample venue dataset.
     """
     parsed = parse_natural_language_request(
         payload.text
@@ -245,9 +300,14 @@ def plan_from_text_live(
         )
     )
 
+    start_coordinates = geocode_start_area(
+        request
+    )
+
     plans = build_plans(
         request=request,
         venues=venues,
+        start_coordinates=start_coordinates,
     )
 
     if not plans:
@@ -264,6 +324,15 @@ def plan_from_text_live(
         plans=plans,
     )
 
+    serialized_start_coordinates = (
+        {
+            "latitude": start_coordinates[0],
+            "longitude": start_coordinates[1],
+        }
+        if start_coordinates is not None
+        else None
+    )
+
     return {
         "original_text": payload.text,
         "parsed_request": parsed.model_dump(),
@@ -271,15 +340,20 @@ def plan_from_text_live(
         "plans": serialized,
         "used_live_data": used_live_data,
         "venue_candidate_count": len(venues),
+        "start_coordinates": serialized_start_coordinates,
         "llm_explanation": explanation,
         "data_notice": (
-            "Live Geoapify place candidates were used. "
-            "Costs, durations, vibes, and travel times are "
-            "currently estimated."
+            (
+                "Live Geoapify place candidates and "
+                "coordinate-based travel estimates were used. "
+                "Costs, durations, and vibes are currently estimated."
+            )
             if used_live_data
             else (
-                "Geoapify was unavailable or returned no "
-                "candidates, so sample venue data was used."
+                "Geoapify place search was unavailable or returned "
+                "no candidates, so sample venue data was used. "
+                "Coordinate-based travel estimates were used when "
+                "the starting location could be geocoded."
             )
         ),
     }
@@ -288,7 +362,7 @@ def plan_from_text_live(
 @app.post("/places/search")
 def search_live_places(
     payload: PlaceSearchRequest,
-) -> dict:
+) -> dict[str, Any]:
     """
     Search Geoapify directly for live places.
     """
