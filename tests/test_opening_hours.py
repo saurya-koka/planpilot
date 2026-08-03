@@ -148,3 +148,41 @@ def test_daily_hours_reject_visit_past_closing() -> None:
     )
 
     assert result is False
+
+
+
+def test_multiple_daily_intervals_open_in_second_range() -> None:
+    result = venue_open_status(
+        opening_hours=(
+            "00:00-02:00, 11:00-00:00"
+        ),
+        weekday="Friday",
+        arrival_time=time(19, 0),
+    )
+
+    assert result is True
+
+
+def test_multiple_daily_intervals_closed_between_ranges() -> None:
+    result = venue_open_status(
+        opening_hours=(
+            "09:00-12:00, 14:00-18:00"
+        ),
+        weekday="Friday",
+        arrival_time=time(13, 0),
+    )
+
+    assert result is False
+
+
+def test_multiple_daily_intervals_reject_visit_past_close() -> None:
+    result = venue_open_for_interval(
+        opening_hours=(
+            "09:00-12:00, 14:00-18:00"
+        ),
+        weekday="Friday",
+        arrival_time=time(17, 30),
+        departure_time=time(18, 30),
+    )
+
+    assert result is False

@@ -242,7 +242,7 @@ def _normalize_opening_hours(
     opening_hours: str,
 ) -> str:
     """
-    Normalize common Geoapify / OpenStreetMap separators.
+    Normalize common Geoapify and OpenStreetMap separators.
     """
     normalized = opening_hours.replace(
         "|",
@@ -256,6 +256,78 @@ def _normalize_opening_hours(
     )
 
     return normalized.strip()
+
+
+def _parse_time_interval(
+    interval_text: str,
+) -> tuple[time, time] | None:
+    """
+    Parse one interval such as:
+
+    09:00-17:00
+    18:00-02:00
+    """
+    match = re.fullmatch(
+        r"(\d{1,2}:\d{2})"
+        r"-"
+        r"(\d{1,2}:\d{2})",
+        interval_text.strip(),
+    )
+
+    if not match:
+        return None
+
+    opening = parse_clock_time(
+        match.group(1)
+    )
+
+    closing = parse_clock_time(
+        match.group(2)
+    )
+
+    if (
+        opening is None
+        or closing is None
+    ):
+        return None
+
+    return (
+        opening,
+        closing,
+    )
+
+
+def _time_matches_any_interval(
+    current: time,
+    interval_texts: list[str],
+) -> bool | None:
+    """
+    Return whether a time falls inside at least one parsed interval.
+
+    None means one of the intervals could not be interpreted.
+    """
+    for interval_text in interval_texts:
+        parsed_interval = (
+            _parse_time_interval(
+                interval_text
+            )
+        )
+
+        if parsed_interval is None:
+            return None
+
+        opening, closing = (
+            parsed_interval
+        )
+
+        if is_time_in_interval(
+            current,
+            opening,
+            closing,
+        ):
+            return True
+
+    return False
 
 
 def venue_open_status(
@@ -306,7 +378,7 @@ def venue_open_status(
             rule.lower().strip()
         )
 
-        # Closed-day rules, such as "Su off".
+        # Closed-day rules such as "Su off".
         off_match = re.fullmatch(
             r"(.+?)\s+off",
             lowered_rule,
@@ -328,42 +400,55 @@ def venue_open_status(
 
             continue
 
-        # Daily hours with no weekday prefix, such as "10:00-17:00".
-        daily_match = re.fullmatch(
-            r"(\d{1,2}:\d{2})"
+        # Daily hours with one or more time intervals:
+        #
+        # 10:00-17:00
+        # 00:00-02:00, 11:00-00:00
+        # 09:00-12:00, 14:00-18:00
+        daily_intervals_match = re.fullmatch(
+            r"("
+            r"\d{1,2}:\d{2}"
             r"-"
-            r"(\d{1,2}:\d{2})",
+            r"\d{1,2}:\d{2}"
+            r"(?:\s*,\s*"
+            r"\d{1,2}:\d{2}"
+            r"-"
+            r"\d{1,2}:\d{2}"
+            r")*"
+            r")",
             rule,
         )
 
-        if daily_match:
+        if daily_intervals_match:
             parsed_any_rule = True
             matched_day = True
 
-            opening = parse_clock_time(
-                daily_match.group(1)
+            interval_texts = [
+                interval.strip()
+                for interval
+                in daily_intervals_match.group(
+                    1
+                ).split(",")
+                if interval.strip()
+            ]
+
+            interval_status = (
+                _time_matches_any_interval(
+                    arrival_time,
+                    interval_texts,
+                )
             )
 
-            closing = parse_clock_time(
-                daily_match.group(2)
-            )
-
-            if (
-                opening is None
-                or closing is None
-            ):
+            if interval_status is None:
                 return None
 
-            if is_time_in_interval(
-                arrival_time,
-                opening,
-                closing,
-            ):
+            if interval_status is True:
                 return True
 
             continue
 
         # Weekday-specific hours such as:
+        #
         # Mo-Fr 09:00-17:00
         # Sa,Su 10:00-16:00
         # Sa[1] 10:00-16:00
@@ -378,9 +463,16 @@ def venue_open_status(
             r"(?:-[A-Za-z]{2}"
             r"(?:\[[^\]]+\])?)?)*"
             r")\s+"
-            r"(\d{1,2}:\d{2})"
+            r"("
+            r"\d{1,2}:\d{2}"
             r"-"
-            r"(\d{1,2}:\d{2})",
+            r"\d{1,2}:\d{2}"
+            r"(?:\s*,\s*"
+            r"\d{1,2}:\d{2}"
+            r"-"
+            r"\d{1,2}:\d{2}"
+            r")*"
+            r")",
             rule,
         )
 
@@ -402,25 +494,24 @@ def venue_open_status(
 
         matched_day = True
 
-        opening = parse_clock_time(
-            match.group(2)
+        interval_texts = [
+            interval.strip()
+            for interval
+            in match.group(2).split(",")
+            if interval.strip()
+        ]
+
+        interval_status = (
+            _time_matches_any_interval(
+                arrival_time,
+                interval_texts,
+            )
         )
 
-        closing = parse_clock_time(
-            match.group(3)
-        )
-
-        if (
-            opening is None
-            or closing is None
-        ):
+        if interval_status is None:
             return None
 
-        if is_time_in_interval(
-            arrival_time,
-            opening,
-            closing,
-        ):
+        if interval_status is True:
             return True
 
     if matched_day:
@@ -472,8 +563,14 @@ def venue_open_for_interval(
         - timedelta(minutes=1)
     )
 
-    return venue_open_status(
-        opening_hours=opening_hours,
-        weekday=weekday,
-        arrival_time=departure_datetime.time(),
+    departure_status = (
+        venue_open_status(
+            opening_hours=opening_hours,
+            weekday=weekday,
+            arrival_time=(
+                departure_datetime.time()
+            ),
+        )
     )
+
+    return departure_status
