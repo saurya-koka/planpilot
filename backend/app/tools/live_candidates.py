@@ -14,17 +14,17 @@ from backend.app.tools.places import (
 CATEGORY_SEARCH_CONFIG = {
     "activity": {
         "default_category": "entertainment",
-        "limit_per_query": 6,
+        "limit_per_query": 8,
         "final_limit": 12,
     },
     "restaurant": {
         "default_category": "catering.restaurant",
-        "limit_per_query": 8,
+        "limit_per_query": 10,
         "final_limit": 12,
     },
     "dessert": {
         "default_category": "catering",
-        "limit_per_query": 6,
+        "limit_per_query": 10,
         "final_limit": 10,
     },
 }
@@ -36,6 +36,7 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
             "garden",
             "park",
             "scenic walk",
+            "art gallery",
             "museum",
         ],
         "positive_keywords": [
@@ -78,6 +79,7 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
             "karaoke",
             "cinema",
             "bowling",
+            "arcade",
             "entertainment",
         ],
         "positive_keywords": [
@@ -88,6 +90,8 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
             "cinema",
             "comedy",
             "entertainment",
+            "theater",
+            "theatre",
         ],
         "negative_keywords": [],
         "restaurant_keywords": [
@@ -110,7 +114,8 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
             "park",
             "garden",
             "museum",
-            "coffee",
+            "gallery",
+            "library",
         ],
         "positive_keywords": [
             "park",
@@ -119,7 +124,6 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
             "book",
             "library",
             "gallery",
-            "cafe",
         ],
         "negative_keywords": [
             "nightclub",
@@ -133,9 +137,9 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
         ],
         "dessert_keywords": [
             "bakery",
-            "coffee",
             "pastry",
             "gelato",
+            "ice cream",
         ],
     },
     "active": {
@@ -144,6 +148,7 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
             "sports",
             "recreation",
             "bowling",
+            "climbing",
         ],
         "positive_keywords": [
             "park",
@@ -177,6 +182,7 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
             "museum",
             "gallery",
             "historic site",
+            "theater",
             "cinema",
         ],
         "positive_keywords": [
@@ -205,7 +211,9 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
     "nightlife": {
         "activity_queries": [
             "karaoke",
-            "cinema",
+            "nightclub",
+            "live music",
+            "comedy",
             "entertainment",
         ],
         "positive_keywords": [
@@ -237,7 +245,9 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
     },
     "family": {
         "activity_queries": [
-            "museum",
+            "science museum",
+            "aquarium",
+            "zoo",
             "park",
             "cinema",
             "entertainment",
@@ -273,8 +283,9 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
     "foodie": {
         "activity_queries": [
             "market",
+            "food market",
+            "historic market",
             "museum",
-            "park",
         ],
         "positive_keywords": [
             "market",
@@ -306,6 +317,7 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
         "activity_queries": [
             "park",
             "garden",
+            "monument",
             "museum",
         ],
         "positive_keywords": [
@@ -337,8 +349,10 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
         "activity_queries": [
             "museum",
             "cinema",
-            "entertainment",
+            "bowling",
             "karaoke",
+            "gallery",
+            "entertainment",
         ],
         "positive_keywords": [
             "museum",
@@ -347,6 +361,8 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
             "karaoke",
             "bowling",
             "gallery",
+            "theater",
+            "theatre",
         ],
         "negative_keywords": [
             "park",
@@ -362,16 +378,18 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
             "restaurant",
         ],
         "dessert_keywords": [
-            "cafe",
             "bakery",
             "chocolate",
             "pastry",
+            "gelato",
+            "ice cream",
         ],
     },
     "work-friendly": {
         "activity_queries": [
-            "coffee",
             "library",
+            "coworking",
+            "coffee",
         ],
         "positive_keywords": [
             "coffee",
@@ -380,6 +398,7 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
             "workspace",
             "wifi",
             "internet",
+            "coworking",
         ],
         "negative_keywords": [
             "nightclub",
@@ -393,7 +412,6 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
             "brunch",
         ],
         "dessert_keywords": [
-            "coffee",
             "bakery",
             "pastry",
         ],
@@ -402,8 +420,9 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
         "activity_queries": [
             "karaoke",
             "bowling",
+            "arcade",
             "entertainment",
-            "park",
+            "cinema",
         ],
         "positive_keywords": [
             "karaoke",
@@ -411,7 +430,9 @@ OUTING_PROFILES: dict[str, dict[str, Any]] = {
             "game",
             "arcade",
             "entertainment",
-            "park",
+            "cinema",
+            "theater",
+            "theatre",
         ],
         "negative_keywords": [],
         "restaurant_keywords": [
@@ -464,20 +485,174 @@ VIBE_ALIASES = {
 GENERIC_CHAIN_KEYWORDS = {
     "starbucks",
     "dunkin",
+    "caffè nero",
+    "caffe nero",
     "mcdonald",
     "burger king",
     "subway",
 }
 
 
+FOOD_VENUE_KEYWORDS = {
+    "restaurant",
+    "cafe",
+    "café",
+    "coffee",
+    "bakery",
+    "bistro",
+    "grill",
+    "kitchen",
+    "diner",
+    "barbecue",
+    "pizza",
+    "pizzeria",
+    "tavern",
+    "food court",
+}
+
+
+ACTIVITY_KEYWORDS = {
+    "museum",
+    "gallery",
+    "cinema",
+    "theater",
+    "theatre",
+    "karaoke",
+    "bowling",
+    "arcade",
+    "game",
+    "park",
+    "garden",
+    "aquarium",
+    "zoo",
+    "monument",
+    "historic",
+    "history",
+    "library",
+    "sports",
+    "recreation",
+    "climbing",
+    "skating",
+    "trail",
+    "beach",
+    "music",
+    "comedy",
+    "nightclub",
+    "entertainment",
+    "market",
+}
+
+
+OUTDOOR_ACTIVITY_KEYWORDS = {
+    "park",
+    "garden",
+    "beach",
+    "trail",
+    "outdoor",
+    "waterfront walk",
+    "scenic walk",
+    "playground",
+}
+
+
+INDOOR_ACTIVITY_KEYWORDS = {
+    "museum",
+    "gallery",
+    "cinema",
+    "theater",
+    "theatre",
+    "karaoke",
+    "bowling",
+    "arcade",
+    "library",
+    "aquarium",
+    "indoor",
+    "nightclub",
+    "comedy",
+}
+
+
+DESSERT_KEYWORDS = {
+    "dessert",
+    "gelato",
+    "ice cream",
+    "frozen yogurt",
+    "chocolate",
+    "cake",
+    "cupcake",
+    "cookie",
+    "donut",
+    "doughnut",
+    "pastry",
+    "patisserie",
+    "bakery",
+    "candy",
+    "sweet",
+    "macaron",
+}
+
+
+RESTAURANT_KEYWORDS = {
+    "restaurant",
+    "ristorante",
+    "trattoria",
+    "osteria",
+    "cucina",
+    "bistro",
+    "grill",
+    "barbecue",
+    "pizza",
+    "pizzeria",
+    "tapas",
+    "food hall",
+    "kitchen",
+    "diner",
+    "tavern",
+    "sushi",
+    "ramen",
+}
+
+
+CAFE_KEYWORDS = {
+    "cafe",
+    "café",
+    "coffee",
+    "espresso",
+    "roastery",
+}
+
+
+GROUP_RESTAURANT_KEYWORDS = {
+    "food hall",
+    "pizza",
+    "pizzeria",
+    "barbecue",
+    "bbq",
+    "tapas",
+    "grill",
+    "family",
+    "buffet",
+}
+
+
 def _clean_text(value: str) -> str:
     value = value.lower().strip()
-    value = re.sub(r"[^a-z0-9\s-]", " ", value)
-    value = re.sub(r"\s+", " ", value)
+    value = re.sub(
+        r"[^a-z0-9\s-]",
+        " ",
+        value,
+    )
+    value = re.sub(
+        r"\s+",
+        " ",
+        value,
+    )
     return value
 
 
-def _place_text(place: PlaceResult) -> str:
+def _place_text(
+    place: PlaceResult,
+) -> str:
     return _clean_text(
         " ".join(
             [
@@ -489,17 +664,13 @@ def _place_text(place: PlaceResult) -> str:
     )
 
 
-def _venue_text(venue: Venue) -> str:
-    return _clean_text(
-        " ".join(
-            [
-                venue.name,
-                venue.area,
-                venue.formatted_address or "",
-                *venue.vibe,
-                *venue.food_tags,
-            ]
-        )
+def _contains_any(
+    text: str,
+    keywords: set[str] | list[str],
+) -> bool:
+    return any(
+        _clean_text(keyword) in text
+        for keyword in keywords
     )
 
 
@@ -507,18 +678,22 @@ def _request_intents(
     request: PlanRequest,
 ) -> list[str]:
     """
-    Normalize free-form request vibes into supported outing profiles.
+    Normalize free-form request vibes into supported profiles.
     """
     intents: list[str] = []
 
     for raw_vibe in request.vibe:
-        cleaned = _clean_text(raw_vibe)
+        cleaned = _clean_text(
+            raw_vibe
+        )
 
         if cleaned in OUTING_PROFILES:
             intents.append(cleaned)
             continue
 
-        alias = VIBE_ALIASES.get(cleaned)
+        alias = VIBE_ALIASES.get(
+            cleaned
+        )
 
         if alias:
             intents.append(alias)
@@ -532,7 +707,9 @@ def _request_intents(
     if not intents:
         intents.append("fun")
 
-    return list(dict.fromkeys(intents))
+    return list(
+        dict.fromkeys(intents)
+    )
 
 
 def _profile_values(
@@ -547,20 +724,22 @@ def _profile_values(
             {},
         )
 
-        raw_values = profile.get(
-            key,
-            [],
-        )
-
         values.extend(
             str(value)
-            for value in raw_values
+            for value in profile.get(
+                key,
+                [],
+            )
         )
 
-    return list(dict.fromkeys(values))
+    return list(
+        dict.fromkeys(values)
+    )
 
 
-def _infer_area(place: PlaceResult) -> str:
+def _infer_area(
+    place: PlaceResult,
+) -> str:
     if place.suburb:
         return place.suburb
 
@@ -594,34 +773,291 @@ def _infer_area(place: PlaceResult) -> str:
     return "Unknown area"
 
 
+def _is_generic_chain(
+    place: PlaceResult,
+) -> bool:
+    text = _place_text(place)
+
+    return _contains_any(
+        text,
+        GENERIC_CHAIN_KEYWORDS,
+    )
+
+
+def _is_valid_activity(
+    place: PlaceResult,
+    request: PlanRequest,
+) -> bool:
+    """
+    Validate whether a place can reasonably serve as an activity.
+    """
+    text = _place_text(place)
+    intents = set(
+        _request_intents(request)
+    )
+
+    has_activity_signal = _contains_any(
+        text,
+        ACTIVITY_KEYWORDS,
+    )
+
+    has_food_signal = _contains_any(
+        text,
+        FOOD_VENUE_KEYWORDS,
+    )
+
+    is_library_or_workspace = _contains_any(
+        text,
+        {
+            "library",
+            "coworking",
+            "workspace",
+        },
+    )
+
+    # Work/study outings may intentionally use a library or workspace
+    # as the main destination.
+    if "work-friendly" in intents:
+        if is_library_or_workspace:
+            return True
+
+        if _contains_any(
+            text,
+            CAFE_KEYWORDS,
+        ):
+            return not _is_generic_chain(
+                place
+            )
+
+    # A normal café, bakery, or restaurant should not become an activity.
+    if has_food_signal and not has_activity_signal:
+        return False
+
+    if not has_activity_signal:
+        return False
+
+    # Rainy-day outings require genuinely indoor activity signals.
+    if "rainy-day" in intents:
+        if _contains_any(
+            text,
+            OUTDOOR_ACTIVITY_KEYWORDS,
+        ):
+            return False
+
+        if not _contains_any(
+            text,
+            INDOOR_ACTIVITY_KEYWORDS,
+        ):
+            return False
+
+    # Active outings should not receive purely passive cultural venues
+    # unless another requested intent explicitly supports them.
+    if (
+        "active" in intents
+        and not {
+            "cultural",
+            "rainy-day",
+        }
+        & intents
+    ):
+        if _contains_any(
+            text,
+            {
+                "museum",
+                "gallery",
+                "cinema",
+                "theater",
+                "theatre",
+            },
+        ):
+            return False
+
+    # Family outings should not use adult nightlife venues.
+    if "family" in intents:
+        if _contains_any(
+            text,
+            {
+                "nightclub",
+                "adult",
+                "strip club",
+            },
+        ):
+            return False
+
+    return True
+
+
+def _is_valid_restaurant(
+    place: PlaceResult,
+    request: PlanRequest,
+) -> bool:
+    """
+    Validate whether a place is suitable as a meal stop.
+    """
+    text = _place_text(place)
+    intents = set(
+        _request_intents(request)
+    )
+
+    has_restaurant_signal = _contains_any(
+        text,
+        RESTAURANT_KEYWORDS,
+    )
+
+    has_cafe_signal = _contains_any(
+        text,
+        CAFE_KEYWORDS,
+    )
+
+    if has_restaurant_signal:
+        return True
+
+    # Café-style meal stops are allowed only for matching outing types.
+    if has_cafe_signal:
+        return bool(
+            {
+                "chill",
+                "work-friendly",
+                "budget",
+                "foodie",
+            }
+            & intents
+        )
+
+    return False
+
+
+def _is_valid_dessert(
+    place: PlaceResult,
+    *,
+    allow_cafe_fallback: bool,
+) -> bool:
+    """
+    Require a genuine dessert signal.
+
+    Generic coffee chains are always excluded as planned dessert
+    destinations.
+    """
+    text = _place_text(place)
+
+    if _is_generic_chain(place):
+        return False
+
+    if _contains_any(
+        text,
+        DESSERT_KEYWORDS,
+    ):
+        return True
+
+    if allow_cafe_fallback:
+        return _contains_any(
+            text,
+            CAFE_KEYWORDS,
+        )
+
+    return False
+
+
+def _is_valid_candidate(
+    place: PlaceResult,
+    category: str,
+    request: PlanRequest,
+    *,
+    allow_dessert_cafe_fallback: bool = False,
+) -> bool:
+    if category == "activity":
+        return _is_valid_activity(
+            place,
+            request,
+        )
+
+    if category == "restaurant":
+        return _is_valid_restaurant(
+            place,
+            request,
+        )
+
+    if category == "dessert":
+        return _is_valid_dessert(
+            place,
+            allow_cafe_fallback=(
+                allow_dessert_cafe_fallback
+            ),
+        )
+
+    return False
+
+
 def _infer_activity_cost(
     place: PlaceResult,
 ) -> float:
     text = _place_text(place)
 
-    if any(
-        keyword in text
-        for keyword in [
+    if _contains_any(
+        text,
+        {
             "park",
             "garden",
             "monument",
             "viewpoint",
             "beach",
             "trail",
-        ]
+            "library",
+        },
     ):
         return 0.0
 
+    if _contains_any(
+        text,
+        {
+            "cinema",
+            "movie theater",
+            "movie theatre",
+            "theater",
+            "theatre",
+            "imax",
+            "omni theater",
+            "omni theatre",
+        },
+    ):
+        return 22.0
+
     if "museum" in text:
         return 25.0
-
-    if "cinema" in text:
-        return 22.0
 
     if "karaoke" in text:
         return 35.0
 
     if "bowling" in text:
+        return 30.0
+
+    if _contains_any(
+        text,
+        {
+            "arcade",
+            "game",
+        },
+    ):
+        return 25.0
+
+    if _contains_any(
+        text,
+        {
+            "aquarium",
+            "zoo",
+        },
+    ):
+        return 32.0
+
+    if _contains_any(
+        text,
+        {
+            "climbing",
+            "skating",
+            "sports",
+            "recreation",
+        },
+    ):
         return 30.0
 
     return 28.0
@@ -632,27 +1068,39 @@ def _infer_restaurant_cost(
 ) -> float:
     text = _place_text(place)
 
-    if any(
-        keyword in text
-        for keyword in [
+    if _contains_any(
+        text,
+        {
             "fast food",
             "food court",
             "falafel",
             "shawarma",
             "sandwich",
-        ]
+        },
     ):
         return 20.0
 
-    if any(
-        keyword in text
-        for keyword in [
+    if _contains_any(
+        text,
+        {
+            "pizza",
+            "pizzeria",
+            "cafe",
+            "diner",
+        },
+    ):
+        return 28.0
+
+    if _contains_any(
+        text,
+        {
             "fine dining",
             "steakhouse",
             "seafood room",
             "ristorante",
             "rooftop",
-        ]
+            "tasting",
+        },
     ):
         return 48.0
 
@@ -664,25 +1112,29 @@ def _infer_dessert_cost(
 ) -> float:
     text = _place_text(place)
 
-    if any(
-        keyword in text
-        for keyword in [
+    if _contains_any(
+        text,
+        {
             "gelato",
             "ice cream",
             "frozen yogurt",
-        ]
+        },
     ):
         return 9.0
 
-    if any(
-        keyword in text
-        for keyword in [
+    if _contains_any(
+        text,
+        {
             "chocolate",
             "cake",
+            "cupcake",
             "bakery",
             "pastry",
             "patisserie",
-        ]
+            "cookie",
+            "donut",
+            "doughnut",
+        },
     ):
         return 13.0
 
@@ -694,13 +1146,19 @@ def _infer_cost(
     category: str,
 ) -> float:
     if category == "activity":
-        return _infer_activity_cost(place)
+        return _infer_activity_cost(
+            place
+        )
 
     if category == "restaurant":
-        return _infer_restaurant_cost(place)
+        return _infer_restaurant_cost(
+            place
+        )
 
     if category == "dessert":
-        return _infer_dessert_cost(place)
+        return _infer_dessert_cost(
+            place
+        )
 
     return 25.0
 
@@ -739,6 +1197,8 @@ def _infer_vibes(
         "fun": [
             "karaoke",
             "cinema",
+            "theater",
+            "theatre",
             "game",
             "bowling",
             "arcade",
@@ -752,6 +1212,7 @@ def _infer_vibes(
             "book",
             "library",
             "garden",
+            "gallery",
         ],
         "scenic": [
             "park",
@@ -777,10 +1238,13 @@ def _infer_vibes(
         "indoor": [
             "museum",
             "cinema",
+            "theater",
+            "theatre",
             "restaurant",
             "cafe",
             "bowling",
             "karaoke",
+            "arcade",
         ],
         "active": [
             "park",
@@ -789,6 +1253,8 @@ def _infer_vibes(
             "game",
             "trail",
             "recreation",
+            "climbing",
+            "skating",
         ],
         "cultural": [
             "museum",
@@ -805,6 +1271,7 @@ def _infer_vibes(
             "bar",
             "karaoke",
             "music",
+            "comedy",
         ],
         "family": [
             "children",
@@ -813,12 +1280,33 @@ def _infer_vibes(
             "zoo",
             "family",
         ],
+        "group": [
+            "karaoke",
+            "bowling",
+            "arcade",
+            "food hall",
+            "pizza",
+            "barbecue",
+        ],
         "work-friendly": [
             "coffee",
             "cafe",
             "library",
             "internet",
             "wifi",
+            "workspace",
+            "coworking",
+        ],
+        "rainy-day": [
+            "museum",
+            "gallery",
+            "cinema",
+            "theater",
+            "theatre",
+            "karaoke",
+            "bowling",
+            "arcade",
+            "indoor",
         ],
     }
 
@@ -826,7 +1314,7 @@ def _infer_vibes(
 
     for vibe, keywords in vibe_keywords.items():
         if any(
-            keyword in text
+            _clean_text(keyword) in text
             for keyword in keywords
         ):
             vibes.append(vibe)
@@ -843,37 +1331,40 @@ def _infer_vibes(
             ["casual"],
         )
 
-    return list(dict.fromkeys(vibes))
+    return list(
+        dict.fromkeys(vibes)
+    )
 
 
 def _infer_food_tags(
     place: PlaceResult,
 ) -> list[str]:
     text = _place_text(place)
-
     tags: list[str] = []
 
-    if any(
-        keyword in text
-        for keyword in [
+    if _contains_any(
+        text,
+        {
             "italian",
             "bistro",
             "restaurant",
             "grill",
-        ]
+        },
     ):
-        tags.append("chicken options")
+        tags.append(
+            "chicken options"
+        )
 
-    if any(
-        keyword in text
-        for keyword in [
+    if _contains_any(
+        text,
+        {
             "italian",
             "risotto",
             "ristorante",
             "trattoria",
             "cucina",
             "osteria",
-        ]
+        },
     ):
         tags.append("risotto")
 
@@ -886,7 +1377,9 @@ def _infer_food_tags(
     if "sushi" in text:
         tags.append("seafood")
 
-    return list(dict.fromkeys(tags))
+    return list(
+        dict.fromkeys(tags)
+    )
 
 
 def place_to_venue(
@@ -897,12 +1390,14 @@ def place_to_venue(
         name=place.name,
         category=category,
         area=_infer_area(place),
-        estimated_cost_per_person=_infer_cost(
-            place,
-            category,
+        estimated_cost_per_person=(
+            _infer_cost(
+                place,
+                category,
+            )
         ),
-        duration_minutes=_infer_duration(
-            category
+        duration_minutes=(
+            _infer_duration(category)
         ),
         vibe=_infer_vibes(
             place,
@@ -915,9 +1410,13 @@ def place_to_venue(
         ),
         latitude=place.latitude,
         longitude=place.longitude,
-        formatted_address=place.formatted_address,
+        formatted_address=(
+            place.formatted_address
+        ),
         website=place.website,
-        opening_hours=place.opening_hours,
+        opening_hours=(
+            place.opening_hours
+        ),
         source=place.source,
     )
 
@@ -927,8 +1426,13 @@ def _restaurant_queries(
 ) -> list[str]:
     preferences = {
         _clean_text(preference)
-        for preference in request.food_preferences
+        for preference
+        in request.food_preferences
     }
+
+    intents = set(
+        _request_intents(request)
+    )
 
     queries: list[str] = []
 
@@ -970,43 +1474,69 @@ def _restaurant_queries(
             "Mexican restaurant"
         )
 
-    if not queries:
-        queries.append("restaurant")
+    if "group" in intents:
+        queries.extend(
+            [
+                "pizza restaurant",
+                "barbecue restaurant",
+                "grill",
+                "food hall",
+            ]
+        )
 
-    return list(dict.fromkeys(queries))
+    if not queries:
+        queries.append(
+            "restaurant"
+        )
+
+    return list(
+        dict.fromkeys(queries)
+    )
 
 
 def _activity_queries(
     request: PlanRequest,
 ) -> list[str]:
-    intents = _request_intents(request)
+    intents = _request_intents(
+        request
+    )
 
     queries = _profile_values(
         intents,
         "activity_queries",
     )
 
-    return queries or ["museum"]
+    return queries or [
+        "museum"
+    ]
 
 
 def _dessert_queries(
     request: PlanRequest,
 ) -> list[str]:
-    intents = _request_intents(request)
-
-    preferred_keywords = _profile_values(
-        intents,
-        "dessert_keywords",
+    intents = _request_intents(
+        request
     )
+
+    preferred_keywords = (
+        _profile_values(
+            intents,
+            "dessert_keywords",
+        )
+    )
+
+    candidates = [
+        "gelato",
+        "ice cream",
+        "bakery",
+        "pastry",
+        "chocolate",
+        "dessert",
+    ]
 
     prioritized = [
         query
-        for query in [
-            "gelato",
-            "ice cream",
-            "bakery",
-            "dessert",
-        ]
+        for query in candidates
         if any(
             query in keyword
             or keyword in query
@@ -1015,9 +1545,10 @@ def _dessert_queries(
     ]
 
     return prioritized or [
-        "dessert",
+        "gelato",
         "ice cream",
         "bakery",
+        "dessert",
     ]
 
 
@@ -1026,13 +1557,19 @@ def _queries_for_category(
     category: str,
 ) -> list[str]:
     if category == "activity":
-        return _activity_queries(request)
+        return _activity_queries(
+            request
+        )
 
     if category == "restaurant":
-        return _restaurant_queries(request)
+        return _restaurant_queries(
+            request
+        )
 
     if category == "dessert":
-        return _dessert_queries(request)
+        return _dessert_queries(
+            request
+        )
 
     return []
 
@@ -1060,7 +1597,9 @@ def _deduplicate_places(
             continue
 
         seen_ids.add(place.place_id)
-        seen_locations.add(location_key)
+        seen_locations.add(
+            location_key
+        )
         unique.append(place)
 
     return unique
@@ -1072,20 +1611,31 @@ def _place_quality_score(
     request: PlanRequest,
 ) -> float:
     """
-    Rank live candidates by outing intent, venue quality,
-    specificity, distance, and undesirable-match penalties.
+    Rank validated candidates by intent, role quality, and distance.
     """
     text = _place_text(place)
-    intents = _request_intents(request)
-
-    positive_keywords = _profile_values(
-        intents,
-        "positive_keywords",
+    name_text = _clean_text(
+        place.name
     )
 
-    negative_keywords = _profile_values(
-        intents,
-        "negative_keywords",
+    intents = _request_intents(
+        request
+    )
+
+    intent_set = set(intents)
+
+    positive_keywords = (
+        _profile_values(
+            intents,
+            "positive_keywords",
+        )
+    )
+
+    negative_keywords = (
+        _profile_values(
+            intents,
+            "negative_keywords",
+        )
     )
 
     if category == "restaurant":
@@ -1106,74 +1656,123 @@ def _place_quality_score(
 
     score = 0.0
 
-    for keyword in set(positive_keywords):
-        cleaned_keyword = _clean_text(
-            keyword
+    for keyword in set(
+        positive_keywords
+    ):
+        cleaned_keyword = (
+            _clean_text(keyword)
         )
 
         if cleaned_keyword in text:
             score += 20
 
-            if cleaned_keyword in _clean_text(
-                place.name
-            ):
+            if cleaned_keyword in name_text:
                 score += 15
 
-    for keyword in set(negative_keywords):
-        if _clean_text(keyword) in text:
-            score -= 45
+    for keyword in set(
+        negative_keywords
+    ):
+        if _clean_text(
+            keyword
+        ) in text:
+            score -= 50
+
+    if category == "activity":
+        if _contains_any(
+            text,
+            ACTIVITY_KEYWORDS,
+        ):
+            score += 25
+
+        if "rainy-day" in intent_set:
+            if _contains_any(
+                text,
+                INDOOR_ACTIVITY_KEYWORDS,
+            ):
+                score += 45
+
+        if {
+            "fun",
+            "group",
+        } & intent_set:
+            if _contains_any(
+                text,
+                {
+                    "karaoke",
+                    "bowling",
+                    "arcade",
+                    "game",
+                    "cinema",
+                    "theater",
+                    "theatre",
+                    "comedy",
+                },
+            ):
+                score += 40
 
     if category == "restaurant":
-        requested_preferences = {
+        preferences = {
             _clean_text(preference)
             for preference
             in request.food_preferences
         }
 
-        if "risotto" in requested_preferences:
-            if any(
-                keyword in text
-                for keyword in [
+        if "risotto" in preferences:
+            if _contains_any(
+                text,
+                {
                     "ristorante",
                     "trattoria",
                     "osteria",
                     "cucina",
                     "italian",
-                ]
+                },
             ):
-                score += 35
+                score += 45
+
+        if "group" in intent_set:
+            if _contains_any(
+                text,
+                GROUP_RESTAURANT_KEYWORDS,
+            ):
+                score += 45
+
+            if _contains_any(
+                text,
+                {
+                    "vegan only",
+                    "vegan.only",
+                    "juice",
+                    "smoothie",
+                },
+            ):
+                score -= 20
 
     if category == "dessert":
-        if any(
-            keyword in text
-            for keyword in [
+        if _contains_any(
+            text,
+            DESSERT_KEYWORDS,
+        ):
+            score += 45
+
+        if _contains_any(
+            name_text,
+            {
                 "gelato",
                 "ice cream",
-                "chocolate",
-                "dessert",
-                "pastry",
                 "bakery",
-                "patisserie",
-            ]
+                "pastry",
+                "chocolate",
+                "cookie",
+                "donut",
+                "doughnut",
+                "dessert",
+            },
         ):
-            score += 35
-        else:
-            score -= 20
+            score += 25
 
-        if any(
-            chain in text
-            for chain in GENERIC_CHAIN_KEYWORDS
-        ):
-            score -= 45
-
-    if category == "activity":
-        if any(
-            category_name.startswith(
-                "entertainment."
-            )
-            for category_name in place.categories
-        ):
-            score += 10
+        if _is_generic_chain(place):
+            score -= 100
 
     if place.website:
         score += 3
@@ -1239,6 +1838,46 @@ def _requested_categories(
     return categories
 
 
+def _filter_valid_places(
+    places: list[PlaceResult],
+    category: str,
+    request: PlanRequest,
+) -> list[PlaceResult]:
+    """
+    Apply strict role validation before ranking.
+
+    Dessert searches get a controlled non-chain café fallback only
+    when no genuine dessert destination is available.
+    """
+    strict_results = [
+        place
+        for place in places
+        if _is_valid_candidate(
+            place=place,
+            category=category,
+            request=request,
+            allow_dessert_cafe_fallback=False,
+        )
+    ]
+
+    if strict_results:
+        return strict_results
+
+    if category == "dessert":
+        return [
+            place
+            for place in places
+            if _is_valid_candidate(
+                place=place,
+                category=category,
+                request=request,
+                allow_dessert_cafe_fallback=True,
+            )
+        ]
+
+    return []
+
+
 def _search_category_places(
     request: PlanRequest,
     category: str,
@@ -1267,19 +1906,31 @@ def _search_category_places(
                 ],
             )
 
-            places.extend(query_results)
+            places.extend(
+                query_results
+            )
 
         except PlaceSearchError:
-            # One failed sub-search should not discard successful
-            # results returned by the other intent queries.
+            # A failed sub-search should not erase successful results
+            # from other intent queries.
             continue
 
-    unique_places = _deduplicate_places(
-        places
+    unique_places = (
+        _deduplicate_places(
+            places
+        )
+    )
+
+    valid_places = (
+        _filter_valid_places(
+            places=unique_places,
+            category=category,
+            request=request,
+        )
     )
 
     ranked_places = _rank_places(
-        places=unique_places,
+        places=valid_places,
         category=category,
         request=request,
     )
@@ -1293,11 +1944,12 @@ def build_live_venues(
     request: PlanRequest,
 ) -> list[Venue]:
     """
-    Search multiple intent-aware place categories, rank the
-    results, and convert them into planner Venue objects.
+    Search, validate, rank, and normalize live venue candidates.
     """
-    categories = _requested_categories(
-        request
+    categories = (
+        _requested_categories(
+            request
+        )
     )
 
     live_venues: list[Venue] = []
@@ -1323,18 +1975,22 @@ def build_live_venues_with_fallback(
     request: PlanRequest,
 ) -> tuple[list[Venue], bool]:
     """
-    Return intent-aware live venues when possible.
+    Return validated live venues when all required roles exist.
 
-    Fall back to the sample dataset only when the live provider
-    fails to produce enough categories for a usable itinerary.
+    Otherwise fall back to the sample dataset so the planner remains
+    usable.
     """
     try:
-        live_venues = build_live_venues(
-            request
+        live_venues = (
+            build_live_venues(
+                request
+            )
         )
 
         required_categories = set(
-            _requested_categories(request)
+            _requested_categories(
+                request
+            )
         )
 
         returned_categories = {
