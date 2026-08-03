@@ -1,116 +1,343 @@
-# PlanPilot 🧭
+# PlanPilot
 
-PlanPilot is a constraint-aware AI agent for planning realistic dates, local outings, and later full trips.
+PlanPilot is a constraint-aware, agentic AI planner for dates, local outings, and city experiences.
 
-## What V1 demonstrates
+It converts a natural-language request into multiple ranked itineraries while checking budget, travel limits, venue categories, opening hours, visit duration, transportation preferences, and user constraints.
 
-- Structured user requirements
-- Deterministic itinerary generation
-- Budget and travel-leg validation
-- Ranking multiple plans
-- FastAPI backend
-- Streamlit interface
+## Why PlanPilot
+
+Most itinerary tools return generic lists of places. PlanPilot instead builds complete, ranked outing plans that are:
+
+- budget-aware;
+- time-aware;
+- travel-aware;
+- availability-aware;
+- tailored to the requested vibe and required stops;
+- explainable through deterministic scoring and validation.
+
+## Key Features
+
+- Natural-language outing requests
+- Structured constraint extraction
+- Live Geoapify place search
+- Starting-location geocoding
+- Coordinate-based travel estimates
+- Budget-aware itinerary generation
+- Activity, dinner, and dessert planning
+- Intent-aware venue search
+- Multiple ranked itinerary options
+- Opening-hours validation
+- Full-visit availability checking
+- Complex weekday schedule parsing
+- Multiple daily opening intervals
+- Near-duplicate venue cleanup
 - Optional OpenAI language layer
-- Tests and Git-ready project structure
+- FastAPI backend
+- Streamlit frontend
+- Automated pytest coverage
 
-> V1 intentionally uses sample venue and route data. Live places, maps, weather, movies, and availability checks are Phase 2.
+## Example Request
+
+```text
+Plan a chill rainy-day outing in Boston for two people under $150
+with an activity, dinner, and dessert.
+```
+
+## What PlanPilot Returns
+
+PlanPilot generates three ranked itinerary options:
+
+- Best overall
+- Lowest cost
+- Best vibe match
+
+Each plan includes:
+
+- estimated group cost;
+- estimated travel time;
+- total outing duration;
+- arrival times for each stop;
+- venue addresses;
+- opening-hours information;
+- venue website links;
+- availability warnings;
+- reasons the plan was selected.
 
 ## Architecture
 
 ```text
-Streamlit UI
-    ↓
-FastAPI /plans endpoint
-    ↓
-Candidate generator
-    ↓
-Constraint validator + scoring
-    ↓
-Optional LLM explanation
+Natural-language request
+        |
+        v
+Streamlit frontend
+        |
+        v
+FastAPI backend
+        |
+        v
+Request parser
+        |
+        v
+Live Geoapify place search
+        |
+        v
+Candidate validation and duplicate cleanup
+        |
+        v
+Routing and schedule generation
+        |
+        v
+Opening-hours and full-visit validation
+        |
+        v
+Constraint scoring and plan ranking
+        |
+        v
+Three recommended itineraries
 ```
 
-The LLM handles language and explanation. Python handles prices, constraints, scoring, and validation.
+The optional language model is used for interpreting ambiguous requests and generating explanations.
 
-## Run locally on Windows
+Deterministic Python logic handles:
 
-### 1. Open PowerShell in the project folder
+- costs;
+- scheduling;
+- travel limits;
+- venue validation;
+- opening hours;
+- full-visit checks;
+- constraint enforcement;
+- plan scoring and ranking.
+
+## Technology Stack
+
+### Backend
+
+- Python
+- FastAPI
+- Pydantic
+- Uvicorn
+
+### Frontend
+
+- Streamlit
+- Requests
+
+### APIs and Services
+
+- Geoapify Places API
+- OpenAI API, optional
+
+### Testing
+
+- pytest
+- FastAPI TestClient
+- httpx
+
+## Project Structure
+
+```text
+planpilot/
+├── backend/
+│   └── app/
+│       ├── main.py
+│       ├── models.py
+│       ├── planner.py
+│       ├── llm.py
+│       ├── data.py
+│       └── tools/
+│           ├── places.py
+│           ├── live_candidates.py
+│           ├── routing.py
+│           └── opening_hours.py
+├── frontend/
+│   └── app.py
+├── tests/
+│   ├── test_api.py
+│   ├── test_parser.py
+│   ├── test_places.py
+│   ├── test_planner.py
+│   └── test_opening_hours.py
+├── .env.example
+├── .gitignore
+├── requirements.txt
+├── pytest.ini
+├── LICENSE
+└── README.md
+```
+
+## Local Setup
+
+This section is for developers who want to run PlanPilot on their own computer. You do not need to repeat these steps if the project is already working locally.
+
+### 1. Clone the repository
+
+```powershell
+git clone https://github.com/saurya-koka/planpilot.git
+cd planpilot
+```
+
+### 2. Create and activate a virtual environment
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-copy .env.example .env
 ```
 
-### 2. Start the backend
+### 3. Install dependencies
+
+```powershell
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 4. Create the environment file
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Add the required values to `.env`:
+
+```env
+GEOAPIFY_API_KEY=your_geoapify_key
+PLACES_PROVIDER=geoapify
+
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-5
+
+BACKEND_URL=http://localhost:8000
+```
+
+Geoapify is required for live place search.
+
+The OpenAI API key is optional.
+
+Never commit the real `.env` file.
+
+## Run PlanPilot
+
+### Start the FastAPI backend
+
+From the project root:
 
 ```powershell
 uvicorn backend.app.main:app --reload
 ```
 
-Backend docs: `http://localhost:8000/docs`
+The backend runs at:
 
-### 3. Start the UI in a second PowerShell window
+```text
+http://localhost:8000
+```
+
+Interactive API documentation is available at:
+
+```text
+http://localhost:8000/docs
+```
+
+### Start the Streamlit frontend
+
+Open a second PowerShell terminal:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 streamlit run frontend/app.py
 ```
 
-### 4. Run tests
+The interface normally opens at:
+
+```text
+http://localhost:8501
+```
+
+## API Endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/health` | Check whether the backend is running |
+| `POST` | `/plans` | Generate plans from structured constraints |
+| `POST` | `/plan-from-text` | Parse and plan from natural language |
+| `POST` | `/plan-from-text/live` | Generate plans using live place data |
+
+The live endpoint performs:
+
+- natural-language parsing;
+- live place search;
+- starting-area geocoding;
+- candidate filtering;
+- duplicate cleanup;
+- travel estimation;
+- schedule generation;
+- opening-hours validation;
+- full-visit validation;
+- plan scoring and ranking.
+
+## Tests
+
+Run the complete test suite:
 
 ```powershell
-pytest
+pytest -q
 ```
 
-## Optional LLM setup
+Current result:
 
-Add your API key to `.env`:
-
-```env
-OPENAI_API_KEY=your_key_here
-OPENAI_MODEL=gpt-5
+```text
+50 passed
 ```
 
-Never commit `.env`. It is excluded by `.gitignore`.
+The remaining Starlette warning comes from the test-client dependency and does not indicate a failing PlanPilot test.
 
-## Push to GitHub with GitHub CLI
+## Environment Variables
 
-After installing and signing into GitHub CLI:
+| Variable | Purpose | Required |
+|---|---|---|
+| `GEOAPIFY_API_KEY` | Live venue search and geocoding | Yes for live planning |
+| `PLACES_PROVIDER` | Selects the place-data provider | Yes for live planning |
+| `OPENAI_API_KEY` | Optional LLM parsing and explanation | No |
+| `OPENAI_MODEL` | OpenAI model used by the optional language layer | Only with OpenAI |
+| `BACKEND_URL` | FastAPI address used by Streamlit | Yes for the frontend |
 
-```powershell
-git init
-git add .
-git commit -m "Initial PlanPilot V1 scaffold"
-git branch -M main
-gh repo create planpilot --public --source=. --remote=origin --push
-```
+## Current Status
 
-## Manual GitHub alternative
-
-Create an empty repository named `planpilot` on GitHub, then run:
-
-```powershell
-git init
-git add .
-git commit -m "Initial PlanPilot V1 scaffold"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/planpilot.git
-git push -u origin main
-```
+- [x] Natural-language constraint extraction
+- [x] Live place search
+- [x] Starting-location geocoding
+- [x] Coordinate-based travel estimates
+- [x] Budget validation
+- [x] Travel-limit validation
+- [x] Opening-hours validation
+- [x] Full-visit availability validation
+- [x] Complex opening-hours parsing
+- [x] Multiple daily opening intervals
+- [x] Near-duplicate venue cleanup
+- [x] Three ranked itinerary options
+- [x] Streamlit frontend
+- [x] Automated tests
+- [ ] Production deployment
 
 ## Roadmap
 
-- [x] V1 mock-data planner and validator
-- [ ] Natural-language request extraction
-- [ ] Live place search
-- [ ] Transit route calculations
-- [ ] Weather-aware replanning
-- [ ] Movie/event discovery
-- [ ] Availability monitoring
-- [ ] User-approved preference memory
-- [ ] Evaluation dashboard
+- Weather-aware replanning
+- Real transit-duration APIs
+- Live movie and event discovery
+- Saved and shareable itineraries
+- User preference profiles
+- Availability monitoring
+- Evaluation dashboard
+- Additional place providers
 
-## Important engineering principle
+## Engineering Principle
 
-Use the LLM for ambiguity and language. Use deterministic software for facts, calculations, validation, permissions, and consequential actions.
+Use language models for ambiguity and language.
+
+Use deterministic software for facts, calculations, constraints, validation, permissions, and consequential decisions.
+
+## Author
+
+**Saurya Koka**
+
+- GitHub: [saurya-koka](https://github.com/saurya-koka)
+- Project repository: [PlanPilot](https://github.com/saurya-koka/planpilot)
