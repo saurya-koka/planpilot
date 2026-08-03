@@ -68,3 +68,29 @@ def test_extracts_budget_and_party_size(
 
     assert parsed.party_size == 4
     assert parsed.budget == 250
+
+def test_extracts_written_party_size() -> None:
+    result = parse_natural_language_request(
+        "Plan a fun outing for five people under $300."
+    )
+
+    assert result.party_size == 5
+    assert "group" in result.vibes
+
+
+def test_extracts_multiple_outing_intents() -> None:
+    result = parse_natural_language_request(
+        "Plan a chill rainy-day outing in Boston."
+    )
+
+    assert "chill" in result.vibes
+    assert "rainy-day" in result.vibes
+
+
+def test_group_intent_is_inferred_from_party_size() -> None:
+    result = parse_natural_language_request(
+        "Plan an outing for 4 people."
+    )
+
+    assert result.party_size == 4
+    assert "group" in result.vibes

@@ -32,7 +32,7 @@ from .tools.routing import (
 
 app = FastAPI(
     title="PlanPilot API",
-    version="0.5.1",
+    version="0.6.0",
 )
 
 
@@ -111,7 +111,7 @@ def parsed_to_plan_request(
         budget_total=parsed.budget,
         party_size=parsed.party_size,
         transport=transport,
-        vibe=[parsed.vibe],
+        vibe=parsed.vibes,
         must_include=must_include,
         food_preferences=food_preferences,
         max_leg_minutes=parsed.max_travel_minutes,
@@ -165,7 +165,6 @@ def geocode_start_area(
             longitude_b=city_coordinates[1],
         )
 
-        # Reject obviously incorrect geocoding matches.
         if distance_from_city > 60:
             return None
 
@@ -182,8 +181,7 @@ def create_plans(
     """
     Generate itineraries from manually supplied structured fields.
 
-    This endpoint continues to use the original sample venue data
-    and temporary area-based travel estimates.
+    This endpoint uses sample venues and temporary route data.
     """
     plans = build_plans(
         request=request,
@@ -279,11 +277,8 @@ def plan_from_text_live(
     """
     Generate itineraries using live Geoapify place candidates.
 
-    The starting area is geocoded and coordinate-based travel
-    estimates are used when coordinates are available.
-
-    If Geoapify place search fails or returns no candidates, the
-    planner falls back to the original sample venue dataset.
+    Multiple outing intents, such as fun plus group or chill plus
+    rainy-day, are preserved and passed to the live candidate engine.
     """
     parsed = parse_natural_language_request(
         payload.text

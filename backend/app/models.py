@@ -69,8 +69,8 @@ class Venue(BaseModel):
     """
     Normalized venue used by the itinerary planner.
 
-    A Venue may come from the original mock dataset or from a
-    live place provider such as Geoapify.
+    A venue may come from the sample dataset or from a live
+    provider such as Geoapify.
     """
 
     name: str
@@ -173,7 +173,9 @@ class ParsedPlanRequest(BaseModel):
         le=180,
     )
 
-    vibe: str = "romantic"
+    vibes: list[str] = Field(
+        default_factory=lambda: ["fun"],
+    )
 
     include_activity: bool = True
     include_dinner: bool = True
