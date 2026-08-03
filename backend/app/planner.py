@@ -10,7 +10,7 @@ from .tools.opening_hours import (
     DAY_ORDER,
     normalize_day,
     parse_clock_time,
-    venue_open_status,
+    venue_open_for_interval,
 )
 from .tools.routing import estimate_travel_minutes
 
@@ -250,10 +250,10 @@ def build_start_datetime(
     request: PlanRequest,
 ) -> datetime:
     """
-    Build a synthetic datetime used only for itinerary arithmetic.
+    Build a synthetic datetime used for itinerary arithmetic.
 
-    The date itself is not meant to represent the real calendar date;
-    it preserves the requested weekday and clock time.
+    The date itself is not intended to represent the real calendar
+    date. It preserves the requested weekday and start time.
     """
     weekday = extract_weekday(
         request.date
@@ -270,8 +270,8 @@ def build_start_datetime(
 
     assert start_clock is not None
 
-    # 2024-01-01 was a Monday. It is used as a stable scheduling
-    # anchor so weekday arithmetic remains deterministic in tests.
+    # 2024-01-01 was a Monday. This creates a stable weekday anchor
+    # for deterministic scheduling and tests.
     monday_anchor = datetime(
         2024,
         1,
@@ -300,7 +300,8 @@ def calculate_stop_schedule(
     list[str],
 ]:
     """
-    Calculate each venue's arrival time and inspect opening hours.
+    Calculate arrival times and inspect whether each venue remains
+    open for the full planned visit.
 
     Returns:
         arrival times
@@ -328,14 +329,22 @@ def calculate_stop_schedule(
             current_datetime
         )
 
+        departure_datetime = (
+            current_datetime
+            + timedelta(
+                minutes=venue.duration_minutes
+            )
+        )
+
         weekday = current_datetime.strftime(
             "%A"
         )
 
-        open_status = venue_open_status(
+        open_status = venue_open_for_interval(
             opening_hours=venue.opening_hours,
             weekday=weekday,
             arrival_time=current_datetime.time(),
+            departure_time=departure_datetime.time(),
         )
 
         if open_status is False:
@@ -351,9 +360,7 @@ def calculate_stop_schedule(
                 venue.name
             )
 
-        current_datetime += timedelta(
-            minutes=venue.duration_minutes
-        )
+        current_datetime = departure_datetime
 
     return (
         arrival_times,
@@ -366,7 +373,7 @@ def format_time(
     value: datetime,
 ) -> str:
     """
-    Return a user-friendly 12-hour clock value.
+    Return a user-friendly 12-hour time.
     """
     return value.strftime(
         "%I:%M %p"
@@ -428,8 +435,7 @@ def build_candidate_plans(
             legs=legs,
         )
 
-        # Confirmed-closed venues invalidate the full combination.
-        # Unknown hours remain eligible and receive a warning.
+        # A confirmed-closed venue invalidates the itinerary.
         if closed_venues:
             continue
 

@@ -10,6 +10,7 @@ from backend.app.tools.places import (
     search_places,
 )
 
+from difflib import SequenceMatcher
 
 CATEGORY_SEARCH_CONFIG = {
     "activity": {
@@ -1573,34 +1574,224 @@ def _queries_for_category(
 
     return []
 
+def _normalize_place_name(
+    name: str,
+) -> str:
+    """
+    Normalize venue names for near-duplicate comparison.
+
+    Examples:
+        Ben & Jerry's -> ben and jerry
+        BEN AND JERRYS -> ben and jerry
+    """
+    normalized = name.lower().strip()
+
+    normalized = normalized.replace(
+        "&",
+        " and ",
+    )
+
+    normalized = re.sub(
+        r"\bthe\b",
+        " ",
+        normalized,
+    )
+
+    normalized = re.sub(
+        r"['’]s\b",
+        "",
+        normalized,
+    )
+
+    normalized = re.sub(
+        r"[^a-z0-9\s]",
+        " ",
+        normalized,
+    )
+
+    normalized = re.sub(
+        r"\s+",
+        " ",
+        normalized,
+    ).strip()
+
+    words = normalized.split()
+
+    normalized_words: list[str] = []
+
+    for word in words:
+        if (
+            len(word) > 4
+            and word.endswith("s")
+            and not word.endswith("ss")
+        ):
+            word = word[:-1]
+
+        normalized_words.append(
+            word
+        )
+
+    return " ".join(
+        normalized_words
+    )
+
+
+def _coordinates_are_near(
+    place_a: PlaceResult,
+    place_b: PlaceResult,
+    *,
+    tolerance: float = 0.005,
+) -> bool:
+    """
+    Roughly determine whether two records refer to nearby locations.
+
+    A tolerance of 0.005 degrees is approximately a few city blocks.
+    """
+    return (
+        abs(
+            place_a.latitude
+            - place_b.latitude
+        )
+        <= tolerance
+        and abs(
+            place_a.longitude
+            - place_b.longitude
+        )
+        <= tolerance
+    )
+
+
+def _names_are_similar(
+    name_a: str,
+    name_b: str,
+) -> bool:
+    normalized_a = _normalize_place_name(
+        name_a
+    )
+
+    normalized_b = _normalize_place_name(
+        name_b
+    )
+
+    if normalized_a == normalized_b:
+        return True
+
+    if (
+        normalized_a in normalized_b
+        or normalized_b in normalized_a
+    ):
+        shorter = min(
+            len(normalized_a),
+            len(normalized_b),
+        )
+
+        return shorter >= 6
+
+    similarity = SequenceMatcher(
+        None,
+        normalized_a,
+        normalized_b,
+    ).ratio()
+
+    return similarity >= 0.88
+
+
+def _are_near_duplicate_places(
+    place_a: PlaceResult,
+    place_b: PlaceResult,
+) -> bool:
+    if not _names_are_similar(
+        place_a.name,
+        place_b.name,
+    ):
+        return False
+
+    return _coordinates_are_near(
+        place_a,
+        place_b,
+    )
+
+
+def _prefer_place_record(
+    existing: PlaceResult,
+    candidate: PlaceResult,
+) -> PlaceResult:
+    """
+    Keep the record containing the most useful metadata.
+    """
+    def metadata_score(
+        place: PlaceResult,
+    ) -> int:
+        score = 0
+
+        if place.website:
+            score += 3
+
+        if place.opening_hours:
+            score += 3
+
+        if place.formatted_address:
+            score += 2
+
+        if place.categories:
+            score += 1
+
+        if place.distance_meters is not None:
+            score += 1
+
+        return score
+
+    if metadata_score(candidate) > metadata_score(
+        existing
+    ):
+        return candidate
+
+    return existing
 
 def _deduplicate_places(
     places: list[PlaceResult],
 ) -> list[PlaceResult]:
+    """
+    Remove exact and near-duplicate live place records.
+
+    Exact IDs are handled first. Records with similar normalized names
+    are also merged when their coordinates are close.
+    """
     unique: list[PlaceResult] = []
     seen_ids: set[str] = set()
-    seen_locations: set[
-        tuple[str, float, float]
-    ] = set()
 
     for place in places:
-        location_key = (
-            _clean_text(place.name),
-            round(place.latitude, 5),
-            round(place.longitude, 5),
-        )
-
         if place.place_id in seen_ids:
             continue
 
-        if location_key in seen_locations:
+        seen_ids.add(
+            place.place_id
+        )
+
+        duplicate_index: int | None = None
+
+        for index, existing in enumerate(
+            unique
+        ):
+            if _are_near_duplicate_places(
+                existing,
+                place,
+            ):
+                duplicate_index = index
+                break
+
+        if duplicate_index is None:
+            unique.append(
+                place
+            )
             continue
 
-        seen_ids.add(place.place_id)
-        seen_locations.add(
-            location_key
+        unique[duplicate_index] = (
+            _prefer_place_record(
+                unique[duplicate_index],
+                place,
+            )
         )
-        unique.append(place)
 
     return unique
 

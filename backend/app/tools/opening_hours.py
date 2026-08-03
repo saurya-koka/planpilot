@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import time
-
+from datetime import date, datetime, time, timedelta
 
 DAY_ALIASES = {
     "mo": "monday",
@@ -200,3 +199,43 @@ def venue_open_status(
         return False
 
     return None
+
+
+def venue_open_for_interval(
+    opening_hours: str | None,
+    weekday: str,
+    arrival_time: time,
+    departure_time: time,
+) -> bool | None:
+    """
+    Check whether a venue appears open for the entire visit.
+
+    Returns:
+        True when open from arrival through departure.
+        False when closed at arrival or before departure.
+        None when opening hours cannot be interpreted.
+    """
+    arrival_status = venue_open_status(
+        opening_hours=opening_hours,
+        weekday=weekday,
+        arrival_time=arrival_time,
+    )
+
+    if arrival_status is not True:
+        return arrival_status
+
+    # Closing times are exclusive, so check one minute before
+    # the planned departure.
+    departure_datetime = (
+        datetime.combine(
+            date.today(),
+            departure_time,
+        )
+        - timedelta(minutes=1)
+    )
+
+    return venue_open_status(
+        opening_hours=opening_hours,
+        weekday=weekday,
+        arrival_time=departure_datetime.time(),
+    )

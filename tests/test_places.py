@@ -173,3 +173,98 @@ def test_ranking_uses_distance_as_tiebreaker() -> None:
     )
 
     assert ranked[0].place_id == "nearby"
+
+from backend.app.tools.live_candidates import (
+    _deduplicate_places,
+    _normalize_place_name,
+)
+
+
+def test_normalizes_possessive_and_ampersand_names() -> None:
+    assert (
+        _normalize_place_name(
+            "Ben & Jerry's"
+        )
+        == "ben and jerry"
+    )
+
+    assert (
+        _normalize_place_name(
+            "BEN AND JERRYS"
+        )
+        == "ben and jerry"
+    )
+
+
+def test_deduplicates_nearby_similar_place_names() -> None:
+    first = PlaceResult(
+        place_id="ben-1",
+        name="Ben & Jerry's",
+        formatted_address=(
+            "1 Faneuil Hall Square, Boston"
+        ),
+        latitude=42.360612,
+        longitude=-71.0540676,
+        categories=[
+            "catering.ice_cream"
+        ],
+        source="geoapify",
+    )
+
+    second = PlaceResult(
+        place_id="ben-2",
+        name="Ben & Jerry",
+        formatted_address=(
+            "Boston HarborWalk, Boston"
+        ),
+        latitude=42.3588884,
+        longitude=-71.0504248,
+        categories=[
+            "catering.ice_cream"
+        ],
+        source="geoapify",
+    )
+
+    results = _deduplicate_places(
+        [
+            first,
+            second,
+        ]
+    )
+
+    assert len(results) == 1
+
+
+def test_keeps_same_chain_at_distant_locations() -> None:
+    first = PlaceResult(
+        place_id="chain-1",
+        name="Example Bakery",
+        formatted_address="Boston",
+        latitude=42.36,
+        longitude=-71.05,
+        categories=[
+            "catering.bakery"
+        ],
+        source="geoapify",
+    )
+
+    second = PlaceResult(
+        place_id="chain-2",
+        name="Example Bakery",
+        formatted_address="Cambridge",
+        latitude=42.39,
+        longitude=-71.12,
+        categories=[
+            "catering.bakery"
+        ],
+        source="geoapify",
+    )
+
+    results = _deduplicate_places(
+        [
+            first,
+            second,
+        ]
+    )
+
+    assert len(results) == 2
