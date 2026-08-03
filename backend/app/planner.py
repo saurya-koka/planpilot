@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import re
+from datetime import datetime, timedelta
 from itertools import product
 
 from .data import AREA_TRAVEL_MINUTES, VENUES
 from .models import Itinerary, PlanRequest, Stop, Venue
+from .tools.opening_hours import (
+    DAY_ORDER,
+    normalize_day,
+    parse_clock_time,
+    venue_open_status,
+)
 from .tools.routing import estimate_travel_minutes
 
 
@@ -210,6 +218,161 @@ def calculate_route_legs(
     return legs
 
 
+def extract_weekday(
+    date_text: str,
+) -> str:
+    """
+    Extract a weekday from values such as:
+
+    Friday
+    This Friday
+    Next Saturday
+
+    Defaults to Friday when no weekday is present.
+    """
+    cleaned = date_text.strip().lower()
+
+    for weekday in DAY_ORDER:
+        if re.search(
+            rf"\b{re.escape(weekday)}\b",
+            cleaned,
+        ):
+            return weekday
+
+    normalized = normalize_day(
+        cleaned
+    )
+
+    return normalized or "friday"
+
+
+def build_start_datetime(
+    request: PlanRequest,
+) -> datetime:
+    """
+    Build a synthetic datetime used only for itinerary arithmetic.
+
+    The date itself is not meant to represent the real calendar date;
+    it preserves the requested weekday and clock time.
+    """
+    weekday = extract_weekday(
+        request.date
+    )
+
+    start_clock = parse_clock_time(
+        request.start_time
+    )
+
+    if start_clock is None:
+        start_clock = parse_clock_time(
+            "17:00"
+        )
+
+    assert start_clock is not None
+
+    # 2024-01-01 was a Monday. It is used as a stable scheduling
+    # anchor so weekday arithmetic remains deterministic in tests.
+    monday_anchor = datetime(
+        2024,
+        1,
+        1,
+        start_clock.hour,
+        start_clock.minute,
+    )
+
+    weekday_index = DAY_ORDER.index(
+        weekday
+    )
+
+    return monday_anchor + timedelta(
+        days=weekday_index
+    )
+
+
+def calculate_stop_schedule(
+    *,
+    request: PlanRequest,
+    venues: list[Venue],
+    legs: list[int],
+) -> tuple[
+    list[datetime],
+    list[str],
+    list[str],
+]:
+    """
+    Calculate each venue's arrival time and inspect opening hours.
+
+    Returns:
+        arrival times
+        confirmed-closed venue names
+        live venues whose hours could not be verified
+    """
+    current_datetime = build_start_datetime(
+        request
+    )
+
+    arrival_times: list[datetime] = []
+    closed_venues: list[str] = []
+    unknown_hours: list[str] = []
+
+    for venue, leg_minutes in zip(
+        venues,
+        legs,
+        strict=True,
+    ):
+        current_datetime += timedelta(
+            minutes=leg_minutes
+        )
+
+        arrival_times.append(
+            current_datetime
+        )
+
+        weekday = current_datetime.strftime(
+            "%A"
+        )
+
+        open_status = venue_open_status(
+            opening_hours=venue.opening_hours,
+            weekday=weekday,
+            arrival_time=current_datetime.time(),
+        )
+
+        if open_status is False:
+            closed_venues.append(
+                venue.name
+            )
+
+        elif (
+            open_status is None
+            and venue.source == "geoapify"
+        ):
+            unknown_hours.append(
+                venue.name
+            )
+
+        current_datetime += timedelta(
+            minutes=venue.duration_minutes
+        )
+
+    return (
+        arrival_times,
+        closed_venues,
+        unknown_hours,
+    )
+
+
+def format_time(
+    value: datetime,
+) -> str:
+    """
+    Return a user-friendly 12-hour clock value.
+    """
+    return value.strftime(
+        "%I:%M %p"
+    ).lstrip("0")
+
+
 def build_candidate_plans(
     request: PlanRequest,
     venues: list[Venue] | None = None,
@@ -255,7 +418,24 @@ def build_candidate_plans(
             start_coordinates=start_coordinates,
         )
 
-        total_travel = sum(legs)
+        (
+            arrival_times,
+            closed_venues,
+            unknown_hours,
+        ) = calculate_stop_schedule(
+            request=request,
+            venues=chosen_venues,
+            legs=legs,
+        )
+
+        # Confirmed-closed venues invalidate the full combination.
+        # Unknown hours remain eligible and receive a warning.
+        if closed_venues:
+            continue
+
+        total_travel = sum(
+            legs
+        )
 
         total_cost = (
             request.party_size
@@ -296,6 +476,21 @@ def build_candidate_plans(
                 f"{max(legs)} minutes."
             )
 
+        if unknown_hours:
+            displayed_names = ", ".join(
+                unknown_hours[:3]
+            )
+
+            if len(unknown_hours) > 3:
+                displayed_names += (
+                    f" and {len(unknown_hours) - 3} more"
+                )
+
+            warnings.append(
+                "Opening hours could not be verified for: "
+                f"{displayed_names}."
+            )
+
         vibe_overlap = calculate_vibe_overlap(
             venues=chosen_venues,
             requested_vibes=request.vibe,
@@ -315,16 +510,33 @@ def build_candidate_plans(
             for leg in legs
         )
 
+        unknown_hours_penalty = (
+            len(unknown_hours) * 3
+        )
+
         score = (
             100
             + vibe_overlap * 8
             - total_travel * 0.7
             - budget_penalty * 1.5
             - long_leg_penalty
+            - unknown_hours_penalty
         )
 
         if not warnings:
             score += 20
+
+        schedule_summary = " → ".join(
+            (
+                f"{venue.name} "
+                f"at {format_time(arrival)}"
+            )
+            for venue, arrival in zip(
+                chosen_venues,
+                arrival_times,
+                strict=True,
+            )
+        )
 
         reasons = [
             (
@@ -338,6 +550,10 @@ def build_candidate_plans(
             (
                 f"Approximately {total_travel} "
                 "minutes of estimated travel."
+            ),
+            (
+                f"Estimated schedule: "
+                f"{schedule_summary}."
             ),
         ]
 
@@ -430,6 +646,7 @@ def select_distinct_plans(
     )
 
     selected: list[Itinerary] = []
+
     used_signatures: set[
         tuple[str, ...]
     ] = set()
@@ -439,7 +656,9 @@ def select_distinct_plans(
         label: str,
         reason: str,
     ) -> None:
-        signature = plan_signature(plan)
+        signature = plan_signature(
+            plan
+        )
 
         if signature in used_signatures:
             return
@@ -452,8 +671,13 @@ def select_distinct_plans(
                 reason,
             )
 
-        selected.append(plan)
-        used_signatures.add(signature)
+        selected.append(
+            plan
+        )
+
+        used_signatures.add(
+            signature
+        )
 
     best_overall = max(
         candidates,
@@ -465,7 +689,7 @@ def select_distinct_plans(
         "Best overall",
         (
             "Highest combined score for budget, "
-            "travel time, and requested vibe."
+            "travel time, schedule, and requested vibe."
         ),
     )
 

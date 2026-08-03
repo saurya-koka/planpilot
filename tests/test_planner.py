@@ -161,3 +161,168 @@ def test_requested_categories_appear_in_plan() -> None:
             "restaurant",
             "dessert",
         ]
+
+from backend.app.models import PlanRequest, Venue
+from backend.app.planner import build_plans
+
+
+def test_closed_venue_is_excluded() -> None:
+    request = PlanRequest(
+        city="Boston",
+        start_area="Back Bay",
+        date="Friday",
+        start_time="17:00",
+        budget_total=200,
+        party_size=2,
+        vibe=["chill"],
+        must_include=["dinner"],
+        food_preferences=[],
+    )
+
+    closed_restaurant = Venue(
+        name="Lunch Only Cafe",
+        category="restaurant",
+        area="Back Bay",
+        estimated_cost_per_person=20,
+        duration_minutes=60,
+        vibe=["chill"],
+        opening_hours="Mo-Fr 07:00-15:00",
+    )
+
+    open_restaurant = Venue(
+        name="Evening Restaurant",
+        category="restaurant",
+        area="Back Bay",
+        estimated_cost_per_person=30,
+        duration_minutes=60,
+        vibe=["chill"],
+        opening_hours="Mo-Fr 16:00-22:00",
+    )
+
+    plans = build_plans(
+        request=request,
+        venues=[
+            closed_restaurant,
+            open_restaurant,
+        ],
+    )
+
+    assert plans
+    assert all(
+        "Lunch Only Cafe" not in plan.title
+        for plan in plans
+    )
+
+    assert any(
+        "Evening Restaurant" in plan.title
+        for plan in plans
+    )
+
+
+def test_unknown_hours_keep_plan_with_warning() -> None:
+    request = PlanRequest(
+        city="Boston",
+        start_area="Back Bay",
+        date="Friday",
+        start_time="17:00",
+        budget_total=200,
+        party_size=2,
+        vibe=["chill"],
+        must_include=["dinner"],
+        food_preferences=[],
+    )
+
+    venue = Venue(
+        name="Unknown Hours Restaurant",
+        category="restaurant",
+        area="Back Bay",
+        estimated_cost_per_person=30,
+        duration_minutes=60,
+        vibe=["chill"],
+        opening_hours=None,
+        source="geoapify",
+    )
+
+    plans = build_plans(
+        request=request,
+        venues=[venue],
+    )
+
+    assert plans
+
+    assert any(
+        "Opening hours could not be verified"
+        in warning
+        for warning in plans[0].warnings
+    )
+
+
+def test_schedule_reason_contains_arrival_time() -> None:
+    request = PlanRequest(
+        city="Boston",
+        start_area="Back Bay",
+        date="Friday",
+        start_time="17:00",
+        budget_total=200,
+        party_size=2,
+        vibe=["fun"],
+        must_include=["activity"],
+        food_preferences=[],
+    )
+
+    venue = Venue(
+        name="Evening Cinema",
+        category="activity",
+        area="Back Bay",
+        estimated_cost_per_person=22,
+        duration_minutes=90,
+        vibe=["fun"],
+        opening_hours="Mo-Su 10:00-23:00",
+    )
+
+    plans = build_plans(
+        request=request,
+        venues=[venue],
+    )
+
+    assert plans
+
+    assert any(
+        "Estimated schedule:"
+        in reason
+        for reason in plans[0].reasons
+    )
+
+
+
+def test_sample_venue_missing_hours_has_no_warning() -> None:
+    request = PlanRequest(
+        city="Boston",
+        start_area="Back Bay",
+        date="Friday",
+        start_time="17:00",
+        budget_total=200,
+        party_size=2,
+        vibe=["chill"],
+        must_include=["dinner"],
+        food_preferences=[],
+    )
+
+    venue = Venue(
+        name="Sample Restaurant",
+        category="restaurant",
+        area="Back Bay",
+        estimated_cost_per_person=30,
+        duration_minutes=60,
+        vibe=["chill"],
+        opening_hours=None,
+        source="sample",
+    )
+
+    plans = build_plans(
+        request=request,
+        venues=[venue],
+    )
+
+    assert plans
+    assert plans[0].warnings == []
