@@ -140,6 +140,10 @@ class Itinerary(BaseModel):
     estimated_travel_minutes: int
     score: float
 
+    route_legs: list["RouteLeg"] = Field(
+        default_factory=list,
+    )
+
     reasons: list[str]
     warnings: list[str]
 
@@ -231,3 +235,65 @@ class PlaceResult(BaseModel):
     website: str | None = None
 
     source: str = "geoapify"
+
+
+
+class RoutePoint(BaseModel):
+    latitude: float
+    longitude: float
+
+
+class RouteResult(BaseModel):
+    """
+    Normalized route returned by a routing provider.
+
+    PlanPilot can therefore change routing providers later without
+    changing the planner.
+    """
+
+    duration_minutes: int = Field(
+        ge=0,
+    )
+
+    distance_meters: int = Field(
+        ge=0,
+    )
+
+    mode: TransportMode
+
+    geometry: list[RoutePoint] = Field(
+        default_factory=list,
+    )
+
+    provider: str
+
+    is_live: bool = True
+
+    fallback_used: bool = False
+
+
+class RouteLeg(BaseModel):
+    """
+    Travel leg connecting the start point or two itinerary stops.
+    """
+
+    from_name: str
+    to_name: str
+
+    duration_minutes: int = Field(
+        ge=0,
+    )
+
+    distance_meters: int = Field(
+        ge=0,
+    )
+
+    mode: TransportMode
+
+    geometry: list[RoutePoint] = Field(
+        default_factory=list,
+    )
+
+    provider: str
+
+    fallback_used: bool = False
