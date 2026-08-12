@@ -23,14 +23,17 @@ from .tools.routing import get_route
 
 Coordinates = tuple[float, float]
 
+# Only this many preliminary plans are upgraded to live routing.
+# This prevents hundreds of external routing calls.
+LIVE_SHORTLIST_SIZE = 6
+
 
 def fallback_travel_minutes(
     area_a: str,
     area_b: str,
 ) -> int:
     """
-    Return a temporary area-based estimate when coordinates are
-    unavailable.
+    Return an area-based estimate when coordinates are unavailable.
     """
     if area_a == area_b:
         return 8
@@ -68,13 +71,18 @@ def calculate_leg_route(
     coordinates_a: Coordinates | None,
     coordinates_b: Coordinates | None,
     request: PlanRequest,
+    prefer_live: bool = True,
 ) -> RouteLeg:
     """
     Build one normalized route leg.
 
-    Live routing is used when both coordinates are available.
-    When coordinates or the live provider are unavailable,
-    PlanPilot preserves the V1 fallback behavior.
+    prefer_live=False:
+        Use only PlanPilot's deterministic route estimate.
+        No external API call is made.
+
+    prefer_live=True:
+        Use the routing provider when possible. The routing layer
+        handles caching and deterministic fallback automatically.
     """
     if (
         coordinates_a is not None
@@ -86,23 +94,18 @@ def calculate_leg_route(
             latitude_b=coordinates_b[0],
             longitude_b=coordinates_b[1],
             transport=request.transport,
+            prefer_live=prefer_live,
         )
 
         return RouteLeg(
             from_name=from_name,
             to_name=to_name,
-            duration_minutes=(
-                route.duration_minutes
-            ),
-            distance_meters=(
-                route.distance_meters
-            ),
+            duration_minutes=route.duration_minutes,
+            distance_meters=route.distance_meters,
             mode=route.mode,
             geometry=route.geometry,
             provider=route.provider,
-            fallback_used=(
-                route.fallback_used
-            ),
+            fallback_used=route.fallback_used,
         )
 
     fallback_minutes = fallback_travel_minutes(
@@ -113,9 +116,7 @@ def calculate_leg_route(
     return RouteLeg(
         from_name=from_name,
         to_name=to_name,
-        duration_minutes=(
-            fallback_minutes
-        ),
+        duration_minutes=fallback_minutes,
         distance_meters=0,
         mode=request.transport,
         geometry=[],
@@ -232,24 +233,21 @@ def calculate_route_legs(
     request: PlanRequest,
     venues: list[Venue],
     start_coordinates: Coordinates | None,
+    prefer_live: bool = True,
 ) -> list[RouteLeg]:
     """
-    Calculate normalized route legs from the starting point
-    through every venue in itinerary order.
+    Calculate route legs from the starting point through every
+    venue in itinerary order.
     """
     legs: list[RouteLeg] = []
 
     previous_name = request.start_area
     previous_area = request.start_area
-    previous_coordinates = (
-        start_coordinates
-    )
+    previous_coordinates = start_coordinates
 
     for venue in venues:
-        current_coordinates = (
-            venue_coordinates(
-                venue
-            )
+        current_coordinates = venue_coordinates(
+            venue
         )
 
         leg = calculate_leg_route(
@@ -257,13 +255,10 @@ def calculate_route_legs(
             to_name=venue.name,
             area_a=previous_area,
             area_b=venue.area,
-            coordinates_a=(
-                previous_coordinates
-            ),
-            coordinates_b=(
-                current_coordinates
-            ),
+            coordinates_a=previous_coordinates,
+            coordinates_b=current_coordinates,
             request=request,
+            prefer_live=prefer_live,
         )
 
         legs.append(
@@ -272,9 +267,7 @@ def calculate_route_legs(
 
         previous_name = venue.name
         previous_area = venue.area
-        previous_coordinates = (
-            current_coordinates
-        )
+        previous_coordinates = current_coordinates
 
     return legs
 
@@ -288,8 +281,6 @@ def extract_weekday(
     Friday
     This Friday
     Next Saturday
-
-    Defaults to Friday when no weekday is present.
     """
     cleaned = (
         date_text
@@ -318,10 +309,7 @@ def build_start_datetime(
     request: PlanRequest,
 ) -> datetime:
     """
-    Build a synthetic datetime used for itinerary arithmetic.
-
-    The date itself is not intended to represent the real calendar
-    date. It preserves the requested weekday and start time.
+    Build a deterministic datetime anchor for itinerary scheduling.
     """
     weekday = extract_weekday(
         request.date
@@ -338,8 +326,6 @@ def build_start_datetime(
 
     assert start_clock is not None
 
-    # 2024-01-01 was a Monday. This creates a stable weekday anchor
-    # for deterministic scheduling and tests.
     monday_anchor = datetime(
         2024,
         1,
@@ -348,10 +334,8 @@ def build_start_datetime(
         start_clock.minute,
     )
 
-    weekday_index = (
-        DAY_ORDER.index(
-            weekday
-        )
+    weekday_index = DAY_ORDER.index(
+        weekday
     )
 
     return (
@@ -373,31 +357,16 @@ def calculate_stop_schedule(
     list[str],
 ]:
     """
-    Calculate arrival times and inspect whether each venue remains
-    open for the full planned visit.
-
-    Returns:
-        arrival times
-        confirmed-closed venue names
-        live venues whose hours could not be verified
+    Calculate arrivals and check whether venues remain open for
+    the full planned visit.
     """
-    current_datetime = (
-        build_start_datetime(
-            request
-        )
+    current_datetime = build_start_datetime(
+        request
     )
 
-    arrival_times: list[
-        datetime
-    ] = []
-
-    closed_venues: list[
-        str
-    ] = []
-
-    unknown_hours: list[
-        str
-    ] = []
+    arrival_times: list[datetime] = []
+    closed_venues: list[str] = []
+    unknown_hours: list[str] = []
 
     for venue, leg in zip(
         venues,
@@ -405,9 +374,7 @@ def calculate_stop_schedule(
         strict=True,
     ):
         current_datetime += timedelta(
-            minutes=(
-                leg.duration_minutes
-            )
+            minutes=leg.duration_minutes
         )
 
         arrival_times.append(
@@ -417,31 +384,19 @@ def calculate_stop_schedule(
         departure_datetime = (
             current_datetime
             + timedelta(
-                minutes=(
-                    venue.duration_minutes
-                )
+                minutes=venue.duration_minutes
             )
         )
 
-        weekday = (
-            current_datetime.strftime(
-                "%A"
-            )
+        weekday = current_datetime.strftime(
+            "%A"
         )
 
-        open_status = (
-            venue_open_for_interval(
-                opening_hours=(
-                    venue.opening_hours
-                ),
-                weekday=weekday,
-                arrival_time=(
-                    current_datetime.time()
-                ),
-                departure_time=(
-                    departure_datetime.time()
-                ),
-            )
+        open_status = venue_open_for_interval(
+            opening_hours=venue.opening_hours,
+            weekday=weekday,
+            arrival_time=current_datetime.time(),
+            departure_time=departure_datetime.time(),
         )
 
         if open_status is False:
@@ -451,16 +406,13 @@ def calculate_stop_schedule(
 
         elif (
             open_status is None
-            and venue.source
-            == "geoapify"
+            and venue.source == "geoapify"
         ):
             unknown_hours.append(
                 venue.name
             )
 
-        current_datetime = (
-            departure_datetime
-        )
+        current_datetime = departure_datetime
 
     return (
         arrival_times,
@@ -472,9 +424,6 @@ def calculate_stop_schedule(
 def format_time(
     value: datetime,
 ) -> str:
-    """
-    Return a user-friendly 12-hour time.
-    """
     return (
         value.strftime(
             "%I:%M %p"
@@ -483,21 +432,274 @@ def format_time(
     )
 
 
+def build_itinerary(
+    *,
+    request: PlanRequest,
+    chosen_venues: list[Venue],
+    start_coordinates: Coordinates | None,
+    prefer_live: bool,
+) -> Itinerary | None:
+    """
+    Build and score one itinerary.
+
+    This function is used twice:
+
+    1. preliminary phase:
+       prefer_live=False
+
+    2. shortlisted final phase:
+       prefer_live=True
+    """
+    legs = calculate_route_legs(
+        request=request,
+        venues=chosen_venues,
+        start_coordinates=start_coordinates,
+        prefer_live=prefer_live,
+    )
+
+    (
+        arrival_times,
+        closed_venues,
+        unknown_hours,
+    ) = calculate_stop_schedule(
+        request=request,
+        venues=chosen_venues,
+        legs=legs,
+    )
+
+    # Confirmed closed venues invalidate the itinerary.
+    if closed_venues:
+        return None
+
+    total_travel = sum(
+        leg.duration_minutes
+        for leg in legs
+    )
+
+    total_cost = (
+        request.party_size
+        * sum(
+            venue.estimated_cost_per_person
+            for venue in chosen_venues
+        )
+    )
+
+    total_duration = (
+        sum(
+            venue.duration_minutes
+            for venue in chosen_venues
+        )
+        + total_travel
+    )
+
+    warnings: list[str] = []
+
+    if total_cost > request.budget_total:
+        overage = (
+            total_cost
+            - request.budget_total
+        )
+
+        warnings.append(
+            "Estimated cost exceeds "
+            f"budget by ${overage:.0f}."
+        )
+
+    longest_leg_minutes = max(
+        (
+            leg.duration_minutes
+            for leg in legs
+        ),
+        default=0,
+    )
+
+    if (
+        longest_leg_minutes
+        > request.max_leg_minutes
+    ):
+        warnings.append(
+            "One travel leg is approximately "
+            f"{longest_leg_minutes} minutes."
+        )
+
+    if unknown_hours:
+        displayed_names = ", ".join(
+            unknown_hours[:3]
+        )
+
+        if len(unknown_hours) > 3:
+            displayed_names += (
+                f" and "
+                f"{len(unknown_hours) - 3} more"
+            )
+
+        warnings.append(
+            "Opening hours could not be verified for: "
+            f"{displayed_names}."
+        )
+
+    vibe_overlap = calculate_vibe_overlap(
+        venues=chosen_venues,
+        requested_vibes=request.vibe,
+    )
+
+    budget_penalty = max(
+        0,
+        total_cost
+        - request.budget_total,
+    )
+
+    long_leg_penalty = sum(
+        max(
+            0,
+            leg.duration_minutes
+            - request.max_leg_minutes,
+        )
+        for leg in legs
+    )
+
+    unknown_hours_penalty = (
+        len(unknown_hours)
+        * 3
+    )
+
+    score = (
+        100
+        + vibe_overlap * 8
+        - total_travel * 0.7
+        - budget_penalty * 1.5
+        - long_leg_penalty
+        - unknown_hours_penalty
+    )
+
+    if not warnings:
+        score += 20
+
+    schedule_summary = " → ".join(
+        (
+            f"{venue.name} "
+            f"at {format_time(arrival)}"
+        )
+        for venue, arrival in zip(
+            chosen_venues,
+            arrival_times,
+            strict=True,
+        )
+    )
+
+    live_route_count = sum(
+        1
+        for leg in legs
+        if not leg.fallback_used
+    )
+
+    fallback_route_count = (
+        len(legs)
+        - live_route_count
+    )
+
+    routing_reason = (
+        f"{live_route_count} route legs "
+        "used live routing data."
+    )
+
+    if fallback_route_count:
+        routing_reason += (
+            f" {fallback_route_count} "
+            f"leg"
+            f"{'s' if fallback_route_count != 1 else ''} "
+            "used fallback estimates."
+        )
+
+    reasons = [
+        (
+            f"Matches {vibe_overlap} "
+            "requested vibe tags."
+        ),
+        (
+            f"Estimated at ${total_cost:.0f} "
+            f"for {request.party_size} people."
+        ),
+        (
+            f"Approximately {total_travel} "
+            "minutes of estimated travel."
+        ),
+        routing_reason,
+        (
+            f"Estimated schedule: "
+            f"{schedule_summary}."
+        ),
+    ]
+
+    stops = [
+        Stop(
+            name=venue.name,
+            category=venue.category,
+            area=venue.area,
+            estimated_cost=round(
+                venue.estimated_cost_per_person
+                * request.party_size,
+                2,
+            ),
+            duration_minutes=venue.duration_minutes,
+            latitude=venue.latitude,
+            longitude=venue.longitude,
+            formatted_address=venue.formatted_address,
+            website=venue.website,
+            opening_hours=venue.opening_hours,
+            source=venue.source,
+        )
+        for venue in chosen_venues
+    ]
+
+    title = " → ".join(
+        venue.name
+        for venue in chosen_venues
+    )
+
+    return Itinerary(
+        label="Candidate",
+        title=title,
+        stops=stops,
+        total_cost=round(
+            total_cost,
+            2,
+        ),
+        total_duration_minutes=total_duration,
+        estimated_travel_minutes=total_travel,
+        score=round(
+            score,
+            2,
+        ),
+        route_legs=legs,
+        reasons=reasons,
+        warnings=warnings,
+    )
+
+
 def build_candidate_plans(
     request: PlanRequest,
     venues: list[Venue] | None = None,
     start_coordinates: Coordinates | None = None,
+    prefer_live: bool = True,
 ) -> list[Itinerary]:
+    """
+    Generate all candidate combinations.
+
+    prefer_live defaults to True to preserve the function's
+    existing behavior for direct callers and tests.
+
+    build_plans() deliberately calls this with prefer_live=False
+    during the preliminary ranking phase.
+    """
     candidate_source = (
         venues
         if venues is not None
         else VENUES
     )
 
-    requested_categories = (
-        get_requested_categories(
-            request
-        )
+    requested_categories = get_requested_categories(
+        request
     )
 
     candidate_groups = [
@@ -506,20 +708,16 @@ def build_candidate_plans(
             request=request,
             venues=candidate_source,
         )
-        for category
-        in requested_categories
+        for category in requested_categories
     ]
 
     if any(
         not group
-        for group
-        in candidate_groups
+        for group in candidate_groups
     ):
         return []
 
-    plans: list[
-        Itinerary
-    ] = []
+    plans: list[Itinerary] = []
 
     for selected_venues in product(
         *candidate_groups
@@ -528,284 +726,17 @@ def build_candidate_plans(
             selected_venues
         )
 
-        legs = calculate_route_legs(
+        plan = build_itinerary(
             request=request,
-            venues=chosen_venues,
-            start_coordinates=(
-                start_coordinates
-            ),
+            chosen_venues=chosen_venues,
+            start_coordinates=start_coordinates,
+            prefer_live=prefer_live,
         )
 
-        (
-            arrival_times,
-            closed_venues,
-            unknown_hours,
-        ) = calculate_stop_schedule(
-            request=request,
-            venues=chosen_venues,
-            legs=legs,
-        )
-
-        # A confirmed-closed venue invalidates the itinerary.
-        if closed_venues:
-            continue
-
-        total_travel = sum(
-            leg.duration_minutes
-            for leg in legs
-        )
-
-        total_cost = (
-            request.party_size
-            * sum(
-                venue.estimated_cost_per_person
-                for venue
-                in chosen_venues
+        if plan is not None:
+            plans.append(
+                plan
             )
-        )
-
-        total_duration = (
-            sum(
-                venue.duration_minutes
-                for venue
-                in chosen_venues
-            )
-            + total_travel
-        )
-
-        warnings: list[
-            str
-        ] = []
-
-        if (
-            total_cost
-            > request.budget_total
-        ):
-            overage = (
-                total_cost
-                - request.budget_total
-            )
-
-            warnings.append(
-                "Estimated cost exceeds "
-                f"budget by ${overage:.0f}."
-            )
-
-        longest_leg_minutes = max(
-            (
-                leg.duration_minutes
-                for leg in legs
-            ),
-            default=0,
-        )
-
-        if (
-            longest_leg_minutes
-            > request.max_leg_minutes
-        ):
-            warnings.append(
-                "One travel leg is approximately "
-                f"{longest_leg_minutes} minutes."
-            )
-
-        if unknown_hours:
-            displayed_names = (
-                ", ".join(
-                    unknown_hours[:3]
-                )
-            )
-
-            if (
-                len(unknown_hours)
-                > 3
-            ):
-                displayed_names += (
-                    f" and "
-                    f"{len(unknown_hours) - 3} "
-                    "more"
-                )
-
-            warnings.append(
-                "Opening hours could not "
-                "be verified for: "
-                f"{displayed_names}."
-            )
-
-        vibe_overlap = (
-            calculate_vibe_overlap(
-                venues=chosen_venues,
-                requested_vibes=(
-                    request.vibe
-                ),
-            )
-        )
-
-        budget_penalty = max(
-            0,
-            total_cost
-            - request.budget_total,
-        )
-
-        long_leg_penalty = sum(
-            max(
-                0,
-                leg.duration_minutes
-                - request.max_leg_minutes,
-            )
-            for leg in legs
-        )
-
-        unknown_hours_penalty = (
-            len(unknown_hours)
-            * 3
-        )
-
-        score = (
-            100
-            + vibe_overlap * 8
-            - total_travel * 0.7
-            - budget_penalty * 1.5
-            - long_leg_penalty
-            - unknown_hours_penalty
-        )
-
-        if not warnings:
-            score += 20
-
-        schedule_summary = (
-            " → ".join(
-                (
-                    f"{venue.name} "
-                    f"at "
-                    f"{format_time(arrival)}"
-                )
-                for venue, arrival
-                in zip(
-                    chosen_venues,
-                    arrival_times,
-                    strict=True,
-                )
-            )
-        )
-
-        live_route_count = sum(
-            1
-            for leg in legs
-            if not leg.fallback_used
-        )
-
-        fallback_route_count = (
-            len(legs)
-            - live_route_count
-        )
-
-        routing_reason = (
-            f"{live_route_count} "
-            "route legs used live "
-            "routing data."
-        )
-
-        if fallback_route_count:
-            routing_reason += (
-                f" {fallback_route_count} "
-                f"leg"
-                f"{'s' if fallback_route_count != 1 else ''} "
-                "used fallback estimates."
-            )
-
-        reasons = [
-            (
-                f"Matches {vibe_overlap} "
-                "requested vibe tags."
-            ),
-            (
-                f"Estimated at "
-                f"${total_cost:.0f} "
-                f"for "
-                f"{request.party_size} "
-                "people."
-            ),
-            (
-                f"Approximately "
-                f"{total_travel} "
-                "minutes of "
-                "estimated travel."
-            ),
-            routing_reason,
-            (
-                f"Estimated schedule: "
-                f"{schedule_summary}."
-            ),
-        ]
-
-        stops = [
-            Stop(
-                name=venue.name,
-                category=(
-                    venue.category
-                ),
-                area=venue.area,
-                estimated_cost=round(
-                    venue.estimated_cost_per_person
-                    * request.party_size,
-                    2,
-                ),
-                duration_minutes=(
-                    venue.duration_minutes
-                ),
-                latitude=(
-                    venue.latitude
-                ),
-                longitude=(
-                    venue.longitude
-                ),
-                formatted_address=(
-                    venue.formatted_address
-                ),
-                website=(
-                    venue.website
-                ),
-                opening_hours=(
-                    venue.opening_hours
-                ),
-                source=(
-                    venue.source
-                ),
-            )
-            for venue
-            in chosen_venues
-        ]
-
-        title = " → ".join(
-            venue.name
-            for venue
-            in chosen_venues
-        )
-
-        plans.append(
-            Itinerary(
-                label="Candidate",
-                title=title,
-                stops=stops,
-                total_cost=round(
-                    total_cost,
-                    2,
-                ),
-                total_duration_minutes=(
-                    total_duration
-                ),
-                estimated_travel_minutes=(
-                    total_travel
-                ),
-                score=round(
-                    score,
-                    2,
-                ),
-                route_legs=legs,
-                reasons=reasons,
-                warnings=warnings,
-            )
-        )
 
     return plans
 
@@ -815,8 +746,7 @@ def plan_signature(
 ) -> tuple[str, ...]:
     return tuple(
         stop.name
-        for stop
-        in plan.stops
+        for stop in plan.stops
     )
 
 
@@ -840,9 +770,7 @@ def select_distinct_plans(
         else plans
     )
 
-    selected: list[
-        Itinerary
-    ] = []
+    selected: list[Itinerary] = []
 
     used_signatures: set[
         tuple[str, ...]
@@ -853,24 +781,16 @@ def select_distinct_plans(
         label: str,
         reason: str,
     ) -> None:
-        signature = (
-            plan_signature(
-                plan
-            )
+        signature = plan_signature(
+            plan
         )
 
-        if (
-            signature
-            in used_signatures
-        ):
+        if signature in used_signatures:
             return
 
         plan.label = label
 
-        if (
-            reason
-            not in plan.reasons
-        ):
+        if reason not in plan.reasons:
             plan.reasons.insert(
                 0,
                 reason,
@@ -886,28 +806,25 @@ def select_distinct_plans(
 
     best_overall = max(
         candidates,
-        key=lambda plan: (
-            plan.score
-        ),
+        key=lambda plan: plan.score,
     )
 
     add_plan(
         best_overall,
         "Best overall",
         (
-            "Highest combined score "
-            "for budget, travel time, "
-            "schedule, and requested vibe."
+            "Highest combined score for budget, "
+            "travel time, schedule, and requested vibe."
         ),
     )
 
     cheapest_candidates = [
         plan
         for plan in candidates
-        if plan_signature(
-            plan
+        if (
+            plan_signature(plan)
+            not in used_signatures
         )
-        not in used_signatures
     ]
 
     if cheapest_candidates:
@@ -923,53 +840,42 @@ def select_distinct_plans(
             lowest_cost,
             "Lowest cost",
             (
-                "Lowest estimated total "
-                "among the available "
-                "valid plans."
+                "Lowest estimated total among "
+                "the available valid plans."
             ),
         )
 
     vibe_candidates = [
         plan
         for plan in candidates
-        if plan_signature(
-            plan
+        if (
+            plan_signature(plan)
+            not in used_signatures
         )
-        not in used_signatures
     ]
 
     if vibe_candidates:
         requested_vibes = {
             vibe.lower()
-            for vibe
-            in request.vibe
+            for vibe in request.vibe
         }
 
         venue_lookup = {
             venue.name: venue
-            for venue
-            in venue_source
+            for venue in venue_source
         }
 
         def vibe_score(
             plan: Itinerary,
-        ) -> tuple[
-            int,
-            float,
-        ]:
+        ) -> tuple[int, float]:
             overlap = 0
 
             for stop in plan.stops:
-                matching_venue = (
-                    venue_lookup.get(
-                        stop.name
-                    )
+                matching_venue = venue_lookup.get(
+                    stop.name
                 )
 
-                if (
-                    matching_venue
-                    is None
-                ):
+                if matching_venue is None:
                     continue
 
                 overlap += len(
@@ -1004,14 +910,12 @@ def select_distinct_plans(
         [
             plan
             for plan in candidates
-            if plan_signature(
-                plan
+            if (
+                plan_signature(plan)
+                not in used_signatures
             )
-            not in used_signatures
         ],
-        key=lambda plan: (
-            plan.score
-        ),
+        key=lambda plan: plan.score,
         reverse=True,
     )
 
@@ -1022,18 +926,12 @@ def select_distinct_plans(
     ]
 
     for plan in remaining:
-        if (
-            len(selected)
-            >= 3
-        ):
+        if len(selected) >= 3:
             break
 
         label_index = min(
             len(selected),
-            len(
-                fallback_labels
-            )
-            - 1,
+            len(fallback_labels) - 1,
         )
 
         add_plan(
@@ -1042,13 +940,167 @@ def select_distinct_plans(
                 label_index
             ],
             (
-                "A strong alternative "
-                "based on the current "
-                "constraints."
+                "A strong alternative based "
+                "on the current constraints."
             ),
         )
 
     return selected[:3]
+
+
+def _venue_lookup(
+    venue_source: list[Venue],
+) -> dict[str, Venue]:
+    """
+    Build a name-to-venue lookup for rebuilding shortlisted plans.
+    """
+    return {
+        venue.name: venue
+        for venue in venue_source
+    }
+
+
+def _venues_for_plan(
+    plan: Itinerary,
+    venue_source: list[Venue],
+) -> list[Venue]:
+    """
+    Recover the Venue objects represented by an itinerary.
+    """
+    lookup = _venue_lookup(
+        venue_source
+    )
+
+    result: list[Venue] = []
+
+    for stop in plan.stops:
+        venue = lookup.get(
+            stop.name
+        )
+
+        if venue is None:
+            return []
+
+        result.append(
+            venue
+        )
+
+    return result
+
+
+def build_live_shortlist(
+    *,
+    preliminary_plans: list[Itinerary],
+    request: PlanRequest,
+    venue_source: list[Venue],
+) -> list[Itinerary]:
+    """
+    Build a small, diverse shortlist for expensive live routing.
+
+    We first preserve the three recommendation styles:
+      - best overall
+      - lowest cost
+      - best vibe
+
+    Then fill remaining shortlist slots with the highest-scoring
+    preliminary candidates.
+    """
+    if not preliminary_plans:
+        return []
+
+    shortlist: list[Itinerary] = []
+
+    used_signatures: set[
+        tuple[str, ...]
+    ] = set()
+
+    initial_selected = select_distinct_plans(
+        plans=preliminary_plans,
+        request=request,
+        venue_source=venue_source,
+    )
+
+    for plan in initial_selected:
+        signature = plan_signature(
+            plan
+        )
+
+        if signature in used_signatures:
+            continue
+
+        shortlist.append(
+            plan
+        )
+
+        used_signatures.add(
+            signature
+        )
+
+    remaining = sorted(
+        preliminary_plans,
+        key=lambda plan: plan.score,
+        reverse=True,
+    )
+
+    for plan in remaining:
+        if (
+            len(shortlist)
+            >= LIVE_SHORTLIST_SIZE
+        ):
+            break
+
+        signature = plan_signature(
+            plan
+        )
+
+        if signature in used_signatures:
+            continue
+
+        shortlist.append(
+            plan
+        )
+
+        used_signatures.add(
+            signature
+        )
+
+    return shortlist
+
+
+def rebuild_shortlist_with_live_routes(
+    *,
+    shortlist: list[Itinerary],
+    request: PlanRequest,
+    venue_source: list[Venue],
+    start_coordinates: Coordinates | None,
+) -> list[Itinerary]:
+    """
+    Upgrade only shortlisted itineraries to live route data.
+    """
+    live_plans: list[Itinerary] = []
+
+    for preliminary_plan in shortlist:
+        chosen_venues = _venues_for_plan(
+            preliminary_plan,
+            venue_source,
+        )
+
+        if not chosen_venues:
+            continue
+
+        live_plan = build_itinerary(
+            request=request,
+            chosen_venues=chosen_venues,
+            start_coordinates=start_coordinates,
+            prefer_live=True,
+        )
+
+        if live_plan is not None:
+            live_plans.append(
+                live_plan
+            )
+
+    return live_plans
 
 
 def build_plans(
@@ -1056,26 +1108,80 @@ def build_plans(
     venues: list[Venue] | None = None,
     start_coordinates: Coordinates | None = None,
 ) -> list[Itinerary]:
+    """
+    Production-style two-stage itinerary planning.
+
+    Stage 1
+    -------
+    Evaluate every candidate using local deterministic routing.
+    This performs zero external routing API calls.
+
+    Stage 2
+    -------
+    Select a small shortlist and upgrade only those candidates
+    using live routing.
+
+    Stage 3
+    -------
+    Re-score using the real travel data and return three distinct
+    recommendations.
+    """
     venue_source = (
         venues
         if venues is not None
         else VENUES
     )
 
-    candidate_plans = (
-        build_candidate_plans(
-            request=request,
-            venues=venue_source,
-            start_coordinates=(
-                start_coordinates
-            ),
-        )
+    # ----------------------------------------------------------
+    # PHASE 1 — FAST PRELIMINARY PLANNING
+    # ----------------------------------------------------------
+
+    preliminary_plans = build_candidate_plans(
+        request=request,
+        venues=venue_source,
+        start_coordinates=start_coordinates,
+        prefer_live=False,
     )
 
-    return select_distinct_plans(
-        plans=candidate_plans,
+    if not preliminary_plans:
+        return []
+
+    # ----------------------------------------------------------
+    # PHASE 2 — SHORTLIST
+    # ----------------------------------------------------------
+
+    shortlist = build_live_shortlist(
+        preliminary_plans=preliminary_plans,
         request=request,
-        venue_source=(
-            venue_source
-        ),
+        venue_source=venue_source,
+    )
+
+    # ----------------------------------------------------------
+    # PHASE 3 — LIVE ROUTING ONLY FOR SHORTLIST
+    # ----------------------------------------------------------
+
+    live_plans = rebuild_shortlist_with_live_routes(
+        shortlist=shortlist,
+        request=request,
+        venue_source=venue_source,
+        start_coordinates=start_coordinates,
+    )
+
+    # If something unexpected prevents live rebuilding entirely,
+    # preserve graceful behavior using the preliminary plans.
+    if not live_plans:
+        return select_distinct_plans(
+            plans=preliminary_plans,
+            request=request,
+            venue_source=venue_source,
+        )
+
+    # ----------------------------------------------------------
+    # PHASE 4 — FINAL RE-RANK USING REAL ROUTE DATA
+    # ----------------------------------------------------------
+
+    return select_distinct_plans(
+        plans=live_plans,
+        request=request,
+        venue_source=venue_source,
     )
