@@ -10,6 +10,7 @@ from .models import (
     PlanRequest,
     RouteLeg,
     Stop,
+    ValidationFailure,
     Venue,
 )
 from .tools.opening_hours import (
@@ -19,6 +20,11 @@ from .tools.opening_hours import (
     venue_open_for_interval,
 )
 from .tools.routing import get_route
+from .validator import (
+    failures_to_warning_messages,
+    validate_itinerary,
+    validation_has_errors,
+)
 
 
 Coordinates = tuple[float, float]
@@ -357,8 +363,12 @@ def calculate_stop_schedule(
     list[str],
 ]:
     """
-    Calculate arrivals and check whether venues remain open for
-    the full planned visit.
+    Calculate arrivals and inspect venue opening-hour status.
+
+    Returns:
+        arrival_times
+        confirmed_closed_venues
+        unknown_hours_venues
     """
     current_datetime = build_start_datetime(
         request
@@ -424,11 +434,28 @@ def calculate_stop_schedule(
 def format_time(
     value: datetime,
 ) -> str:
+    """
+    Format an itinerary timestamp for user-facing explanations.
+    """
     return (
         value.strftime(
             "%I:%M %p"
         )
         .lstrip("0")
+    )
+
+
+def plan_has_errors(
+    plan: Itinerary,
+) -> bool:
+    """
+    Return True when a plan contains at least one structured
+    validation error.
+
+    Warnings do not invalidate an itinerary.
+    """
+    return validation_has_errors(
+        plan.validation_failures
     )
 
 
@@ -438,17 +465,20 @@ def build_itinerary(
     chosen_venues: list[Venue],
     start_coordinates: Coordinates | None,
     prefer_live: bool,
-) -> Itinerary | None:
+) -> Itinerary:
     """
-    Build and score one itinerary.
+    Build, score, and validate one itinerary.
 
     This function is used twice:
 
-    1. preliminary phase:
+    1. Preliminary phase
        prefer_live=False
 
-    2. shortlisted final phase:
+    2. Shortlisted final phase
        prefer_live=True
+
+    V2.3 attaches machine-readable ValidationFailure objects to
+    every generated itinerary.
     """
     legs = calculate_route_legs(
         request=request,
@@ -466,10 +496,6 @@ def build_itinerary(
         venues=chosen_venues,
         legs=legs,
     )
-
-    # Confirmed closed venues invalidate the itinerary.
-    if closed_venues:
-        return None
 
     total_travel = sum(
         leg.duration_minutes
@@ -491,52 +517,6 @@ def build_itinerary(
         )
         + total_travel
     )
-
-    warnings: list[str] = []
-
-    if total_cost > request.budget_total:
-        overage = (
-            total_cost
-            - request.budget_total
-        )
-
-        warnings.append(
-            "Estimated cost exceeds "
-            f"budget by ${overage:.0f}."
-        )
-
-    longest_leg_minutes = max(
-        (
-            leg.duration_minutes
-            for leg in legs
-        ),
-        default=0,
-    )
-
-    if (
-        longest_leg_minutes
-        > request.max_leg_minutes
-    ):
-        warnings.append(
-            "One travel leg is approximately "
-            f"{longest_leg_minutes} minutes."
-        )
-
-    if unknown_hours:
-        displayed_names = ", ".join(
-            unknown_hours[:3]
-        )
-
-        if len(unknown_hours) > 3:
-            displayed_names += (
-                f" and "
-                f"{len(unknown_hours) - 3} more"
-            )
-
-        warnings.append(
-            "Opening hours could not be verified for: "
-            f"{displayed_names}."
-        )
 
     vibe_overlap = calculate_vibe_overlap(
         venues=chosen_venues,
@@ -571,9 +551,6 @@ def build_itinerary(
         - long_leg_penalty
         - unknown_hours_penalty
     )
-
-    if not warnings:
-        score += 20
 
     schedule_summary = " → ".join(
         (
@@ -657,7 +634,15 @@ def build_itinerary(
         for venue in chosen_venues
     )
 
-    return Itinerary(
+    # ----------------------------------------------------------
+    # BUILD PROVISIONAL ITINERARY
+    # ----------------------------------------------------------
+    #
+    # Validation needs the completed stops, route legs, cost,
+    # duration, and routing metadata. We therefore construct the
+    # itinerary first and validate it immediately afterward.
+
+    itinerary = Itinerary(
         label="Candidate",
         title=title,
         stops=stops,
@@ -672,9 +657,41 @@ def build_itinerary(
             2,
         ),
         route_legs=legs,
+        validation_failures=[],
         reasons=reasons,
-        warnings=warnings,
+        warnings=[],
     )
+
+    # ----------------------------------------------------------
+    # STRUCTURED VALIDATION
+    # ----------------------------------------------------------
+
+    validation_result = validate_itinerary(
+        request=request,
+        itinerary=itinerary,
+        closed_venues=closed_venues,
+    )
+
+    itinerary.validation_failures = (
+        validation_result.failures
+    )
+
+    # Preserve compatibility with the existing Streamlit UI.
+    itinerary.warnings = (
+        failures_to_warning_messages(
+            validation_result.failures
+        )
+    )
+
+    # Preserve the existing planner behavior where fully clean
+    # plans receive a score bonus.
+    if not itinerary.validation_failures:
+        itinerary.score = round(
+            itinerary.score + 20,
+            2,
+        )
+
+    return itinerary
 
 
 def build_candidate_plans(
@@ -686,11 +703,10 @@ def build_candidate_plans(
     """
     Generate all candidate combinations.
 
-    prefer_live defaults to True to preserve the function's
-    existing behavior for direct callers and tests.
+    prefer_live defaults to True to preserve direct-call behavior.
 
     build_plans() deliberately calls this with prefer_live=False
-    during the preliminary ranking phase.
+    during preliminary ranking to avoid excessive API calls.
     """
     candidate_source = (
         venues
@@ -733,10 +749,9 @@ def build_candidate_plans(
             prefer_live=prefer_live,
         )
 
-        if plan is not None:
-            plans.append(
-                plan
-            )
+        plans.append(
+            plan
+        )
 
     return plans
 
@@ -755,15 +770,29 @@ def select_distinct_plans(
     request: PlanRequest,
     venue_source: list[Venue],
 ) -> list[Itinerary]:
+    """
+    Select up to three meaningfully different plans.
+
+    V2.3 considers plans with no validation errors valid.
+
+    Warning-level issues such as unknown opening hours or route
+    fallback do not automatically invalidate an itinerary.
+    """
     if not plans:
         return []
 
     valid_plans = [
         plan
         for plan in plans
-        if not plan.warnings
+        if not plan_has_errors(
+            plan
+        )
     ]
 
+    # If every plan violates a hard constraint, keep the invalid
+    # candidates available. This becomes important in V2.4 because
+    # the repair agent needs failed plans to understand what must
+    # be repaired.
     candidates = (
         valid_plans
         if valid_plans
@@ -1076,6 +1105,9 @@ def rebuild_shortlist_with_live_routes(
 ) -> list[Itinerary]:
     """
     Upgrade only shortlisted itineraries to live route data.
+
+    Every rebuilt itinerary is validated again using its final
+    live route durations and route providers.
     """
     live_plans: list[Itinerary] = []
 
@@ -1095,10 +1127,9 @@ def rebuild_shortlist_with_live_routes(
             prefer_live=True,
         )
 
-        if live_plan is not None:
-            live_plans.append(
-                live_plan
-            )
+        live_plans.append(
+            live_plan
+        )
 
     return live_plans
 
@@ -1118,13 +1149,19 @@ def build_plans(
 
     Stage 2
     -------
-    Select a small shortlist and upgrade only those candidates
-    using live routing.
+    Select a small shortlist.
 
     Stage 3
     -------
-    Re-score using the real travel data and return three distinct
-    recommendations.
+    Upgrade only shortlisted plans with live routing.
+
+    Stage 4
+    -------
+    Revalidate and re-score using final route data.
+
+    Stage 5
+    -------
+    Return three distinct recommendations.
     """
     venue_source = (
         venues
@@ -1157,7 +1194,7 @@ def build_plans(
     )
 
     # ----------------------------------------------------------
-    # PHASE 3 — LIVE ROUTING ONLY FOR SHORTLIST
+    # PHASE 3 — LIVE ROUTING
     # ----------------------------------------------------------
 
     live_plans = rebuild_shortlist_with_live_routes(
@@ -1167,8 +1204,7 @@ def build_plans(
         start_coordinates=start_coordinates,
     )
 
-    # If something unexpected prevents live rebuilding entirely,
-    # preserve graceful behavior using the preliminary plans.
+    # Graceful fallback if live rebuilding unexpectedly fails.
     if not live_plans:
         return select_distinct_plans(
             plans=preliminary_plans,
@@ -1177,7 +1213,7 @@ def build_plans(
         )
 
     # ----------------------------------------------------------
-    # PHASE 4 — FINAL RE-RANK USING REAL ROUTE DATA
+    # PHASE 4 — FINAL SELECTION
     # ----------------------------------------------------------
 
     return select_distinct_plans(

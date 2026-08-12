@@ -19,10 +19,61 @@ VenueCategory = Literal[
 ]
 
 
+ValidationSeverity = Literal[
+    "info",
+    "warning",
+    "error",
+]
+
+
+ValidationCode = Literal[
+    "budget_exceeded",
+    "travel_leg_too_long",
+    "venue_closed",
+    "opening_hours_unknown",
+    "route_fallback_used",
+]
+
+
+class ValidationFailure(BaseModel):
+    """
+    One machine-readable validation issue.
+
+    These objects will be consumed by the repair agent in V2.4.
+    """
+
+    code: ValidationCode
+
+    severity: ValidationSeverity
+
+    message: str
+
+    details: dict[str, object] = Field(
+        default_factory=dict,
+    )
+
+
+class ValidationResult(BaseModel):
+    """
+    Result returned by the deterministic itinerary validator.
+    """
+
+    is_valid: bool
+
+    failures: list[
+        ValidationFailure
+    ] = Field(
+        default_factory=list,
+    )
+
+
 class PlanRequest(BaseModel):
     city: str = "Boston"
+
     start_area: str = "Davis Square"
+
     date: str = "Friday"
+
     start_time: str = "17:00"
 
     budget_total: float = Field(
@@ -36,7 +87,9 @@ class PlanRequest(BaseModel):
         le=12,
     )
 
-    transport: TransportMode = "public_transit"
+    transport: TransportMode = (
+        "public_transit"
+    )
 
     vibe: list[str] = Field(
         default_factory=lambda: [
@@ -74,7 +127,9 @@ class Venue(BaseModel):
     """
 
     name: str
+
     category: VenueCategory
+
     area: str
 
     estimated_cost_per_person: float = Field(
@@ -94,11 +149,23 @@ class Venue(BaseModel):
     )
 
     latitude: float | None = None
+
     longitude: float | None = None
 
-    formatted_address: str | None = None
-    website: str | None = None
-    opening_hours: str | None = None
+    formatted_address: (
+        str
+        | None
+    ) = None
+
+    website: (
+        str
+        | None
+    ) = None
+
+    opening_hours: (
+        str
+        | None
+    ) = None
 
     source: str = "sample"
 
@@ -109,7 +176,9 @@ class Stop(BaseModel):
     """
 
     name: str
+
     category: str
+
     area: str
 
     estimated_cost: float = Field(
@@ -121,125 +190,30 @@ class Stop(BaseModel):
     )
 
     latitude: float | None = None
+
     longitude: float | None = None
 
-    formatted_address: str | None = None
-    website: str | None = None
-    opening_hours: str | None = None
+    formatted_address: (
+        str
+        | None
+    ) = None
+
+    website: (
+        str
+        | None
+    ) = None
+
+    opening_hours: (
+        str
+        | None
+    ) = None
 
     source: str = "sample"
 
 
-class Itinerary(BaseModel):
-    label: str
-    title: str
-    stops: list[Stop]
-
-    total_cost: float
-    total_duration_minutes: int
-    estimated_travel_minutes: int
-    score: float
-
-    route_legs: list["RouteLeg"] = Field(
-        default_factory=list,
-    )
-
-    reasons: list[str]
-    warnings: list[str]
-
-
-class NaturalLanguageRequest(BaseModel):
-    text: str
-    start_area: str = "Davis Square"
-
-    food_preferences: list[str] = Field(
-        default_factory=list,
-    )
-
-
-class ParsedPlanRequest(BaseModel):
-    city: str = "Boston"
-
-    budget: float = Field(
-        default=200,
-        gt=0,
-    )
-
-    party_size: int = Field(
-        default=2,
-        ge=1,
-        le=12,
-    )
-
-    max_travel_minutes: int = Field(
-        default=30,
-        ge=5,
-        le=180,
-    )
-
-    vibes: list[str] = Field(
-        default_factory=lambda: ["fun"],
-    )
-
-    include_activity: bool = True
-    include_dinner: bool = True
-    include_dessert: bool = False
-
-    transportation: str = "public_transit"
-
-    start_time: str | None = None
-    date_text: str | None = None
-
-    food_preferences: list[str] = Field(
-        default_factory=list,
-    )
-
-
-class PlaceSearchRequest(BaseModel):
-    query: str
-    city: str = "Boston"
-    category: str | None = None
-
-    limit: int = Field(
-        default=10,
-        ge=1,
-        le=20,
-    )
-
-
-class PlaceResult(BaseModel):
-    """
-    Normalized result returned by a live place provider.
-    """
-
-    place_id: str
-    name: str
-    formatted_address: str
-
-    latitude: float
-    longitude: float
-
-    categories: list[str] = Field(
-        default_factory=list,
-    )
-
-    city: str | None = None
-    district: str | None = None
-    suburb: str | None = None
-    postcode: str | None = None
-    state: str | None = None
-    country: str | None = None
-
-    distance_meters: int | None = None
-    opening_hours: str | None = None
-    website: str | None = None
-
-    source: str = "geoapify"
-
-
-
 class RoutePoint(BaseModel):
     latitude: float
+
     longitude: float
 
 
@@ -261,7 +235,9 @@ class RouteResult(BaseModel):
 
     mode: TransportMode
 
-    geometry: list[RoutePoint] = Field(
+    geometry: list[
+        RoutePoint
+    ] = Field(
         default_factory=list,
     )
 
@@ -278,6 +254,7 @@ class RouteLeg(BaseModel):
     """
 
     from_name: str
+
     to_name: str
 
     duration_minutes: int = Field(
@@ -290,10 +267,213 @@ class RouteLeg(BaseModel):
 
     mode: TransportMode
 
-    geometry: list[RoutePoint] = Field(
+    geometry: list[
+        RoutePoint
+    ] = Field(
         default_factory=list,
     )
 
     provider: str
 
     fallback_used: bool = False
+
+
+class Itinerary(BaseModel):
+    label: str
+
+    title: str
+
+    stops: list[
+        Stop
+    ]
+
+    total_cost: float
+
+    total_duration_minutes: int
+
+    estimated_travel_minutes: int
+
+    score: float
+
+    route_legs: list[
+        RouteLeg
+    ] = Field(
+        default_factory=list,
+    )
+
+    validation_failures: list[
+        ValidationFailure
+    ] = Field(
+        default_factory=list,
+    )
+
+    reasons: list[
+        str
+    ]
+
+    warnings: list[
+        str
+    ]
+
+
+class NaturalLanguageRequest(
+    BaseModel
+):
+    text: str
+
+    start_area: str = (
+        "Davis Square"
+    )
+
+    food_preferences: list[
+        str
+    ] = Field(
+        default_factory=list,
+    )
+
+
+class ParsedPlanRequest(
+    BaseModel
+):
+    city: str = "Boston"
+
+    budget: float = Field(
+        default=200,
+        gt=0,
+    )
+
+    party_size: int = Field(
+        default=2,
+        ge=1,
+        le=12,
+    )
+
+    max_travel_minutes: int = Field(
+        default=30,
+        ge=5,
+        le=180,
+    )
+
+    vibes: list[
+        str
+    ] = Field(
+        default_factory=lambda: [
+            "fun"
+        ],
+    )
+
+    include_activity: bool = True
+
+    include_dinner: bool = True
+
+    include_dessert: bool = False
+
+    transportation: str = (
+        "public_transit"
+    )
+
+    start_time: (
+        str
+        | None
+    ) = None
+
+    date_text: (
+        str
+        | None
+    ) = None
+
+    food_preferences: list[
+        str
+    ] = Field(
+        default_factory=list,
+    )
+
+
+class PlaceSearchRequest(
+    BaseModel
+):
+    query: str
+
+    city: str = "Boston"
+
+    category: (
+        str
+        | None
+    ) = None
+
+    limit: int = Field(
+        default=10,
+        ge=1,
+        le=20,
+    )
+
+
+class PlaceResult(BaseModel):
+    """
+    Normalized result returned by a live place provider.
+    """
+
+    place_id: str
+
+    name: str
+
+    formatted_address: str
+
+    latitude: float
+
+    longitude: float
+
+    categories: list[
+        str
+    ] = Field(
+        default_factory=list,
+    )
+
+    city: (
+        str
+        | None
+    ) = None
+
+    district: (
+        str
+        | None
+    ) = None
+
+    suburb: (
+        str
+        | None
+    ) = None
+
+    postcode: (
+        str
+        | None
+    ) = None
+
+    state: (
+        str
+        | None
+    ) = None
+
+    country: (
+        str
+        | None
+    ) = None
+
+    distance_meters: (
+        int
+        | None
+    ) = None
+
+    opening_hours: (
+        str
+        | None
+    ) = None
+
+    website: (
+        str
+        | None
+    ) = None
+
+    source: str = (
+        "geoapify"
+    )
