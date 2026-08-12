@@ -35,11 +35,19 @@ ValidationCode = Literal[
 ]
 
 
+RepairStrategy = Literal[
+    "replace_expensive_venue",
+    "replace_distant_venue",
+    "replace_closed_venue",
+    "no_action",
+]
+
+
 class ValidationFailure(BaseModel):
     """
     One machine-readable validation issue.
 
-    These objects will be consumed by the repair agent in V2.4.
+    These objects are consumed by the repair agent in V2.4.
     """
 
     code: ValidationCode
@@ -314,6 +322,114 @@ class Itinerary(BaseModel):
     warnings: list[
         str
     ]
+
+
+class RepairAction(BaseModel):
+    """
+    One concrete repair decision made by the agent.
+
+    Example:
+        budget_exceeded
+            ->
+        replace_expensive_venue
+            ->
+        replace Restaurant A with Restaurant B
+    """
+
+    failure_code: ValidationCode
+
+    strategy: RepairStrategy
+
+    target_name: (
+        str
+        | None
+    ) = None
+
+    replacement_name: (
+        str
+        | None
+    ) = None
+
+    rationale: str
+
+    metadata: dict[
+        str,
+        object,
+    ] = Field(
+        default_factory=dict,
+    )
+
+
+class RepairAttempt(BaseModel):
+    """
+    Record of one complete repair iteration.
+
+    This lets PlanPilot explain what the agent changed and whether
+    the change improved the itinerary.
+    """
+
+    attempt_number: int = Field(
+        ge=1,
+    )
+
+    input_plan_title: str
+
+    failure_codes: list[
+        ValidationCode
+    ] = Field(
+        default_factory=list,
+    )
+
+    actions: list[
+        RepairAction
+    ] = Field(
+        default_factory=list,
+    )
+
+    output_plan_title: (
+        str
+        | None
+    ) = None
+
+    remaining_failures: list[
+        ValidationFailure
+    ] = Field(
+        default_factory=list,
+    )
+
+    success: bool = False
+
+
+class RepairResult(BaseModel):
+    """
+    Final result of the bounded agentic repair process.
+
+    The repair loop may succeed before reaching the attempt limit,
+    or exhaust all allowed attempts while preserving a full trace.
+    """
+
+    success: bool
+
+    original_itinerary: Itinerary
+
+    final_itinerary: (
+        Itinerary
+        | None
+    ) = None
+
+    attempts: list[
+        RepairAttempt
+    ] = Field(
+        default_factory=list,
+    )
+
+    max_attempts: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+    )
+
+    exhausted: bool = False
 
 
 class NaturalLanguageRequest(
