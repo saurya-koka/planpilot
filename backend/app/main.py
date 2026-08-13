@@ -854,6 +854,88 @@ def graph_plan_from_text(
             )
         ),
 
+        # -----------------------------
+        # V2.9 weather metadata
+        # -----------------------------
+        "weather_checked": (
+            result.get(
+                "weather_checked",
+                False,
+            )
+        ),
+        "weather_condition": (
+            result.get(
+                "weather_condition",
+                "",
+            )
+        ),
+        "weather_temperature_c": (
+            result.get(
+                "weather_temperature_c",
+                0.0,
+            )
+        ),
+        "weather_precipitation_probability": (
+            result.get(
+                "weather_precipitation_probability",
+                0.0,
+            )
+        ),
+        "weather_wind_speed_kph": (
+            result.get(
+                "weather_wind_speed_kph",
+                0.0,
+            )
+        ),
+        "weather_risk_level": (
+            result.get(
+                "weather_risk_level",
+                "",
+            )
+        ),
+        "weather_outdoor_safe": (
+            result.get(
+                "weather_outdoor_safe",
+                True,
+            )
+        ),
+        "weather_reasons": (
+            result.get(
+                "weather_reasons",
+                [],
+            )
+        ),
+        "weather_source": (
+            result.get(
+                "weather_source",
+                "",
+            )
+        ),
+        "weather_adjusted": (
+            result.get(
+                "weather_adjusted",
+                False,
+            )
+        ),
+        "weather_original_venue_count": (
+            result.get(
+                "weather_original_venue_count",
+                0,
+            )
+        ),
+        "weather_filtered_venue_count": (
+            result.get(
+                "weather_filtered_venue_count",
+                0,
+            )
+        ),
+        "weather_removed_venue_names": (
+            result.get(
+                "weather_removed_venue_names",
+                [],
+            )
+        ),
+
         "last_action": (
             result.get(
                 "last_action",
@@ -885,8 +967,10 @@ def graph_plan_from_text(
         "data_notice": (
             "LangGraph orchestrated "
             "PlanPilot planning, "
-            "RAG retrieval, validation, "
-            "repair, venue search, "
+            "hybrid RAG retrieval, "
+            "weather assessment, "
+            "weather-aware venue adaptation, "
+            "validation, repair, venue search, "
             "and replanning."
         ),
     }

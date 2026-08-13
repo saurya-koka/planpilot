@@ -20,76 +20,100 @@ class PlanPilotGraphState(
     to update.
     """
 
-    # Original natural-language request.
     user_message: str
 
-    # Structured planner request.
     request: PlanRequest
 
-    # Current working venue pool.
     venues: list[
         Venue
     ]
 
-    # Current itinerary candidates.
     plans: list[
         Itinerary
     ]
 
-    # Optional geocoded start point.
     start_coordinates: (
-        tuple[float, float]
+        tuple[
+            float,
+            float,
+        ]
         | None
     )
 
-    # Candidate currently selected for repair.
     selected_plan_index: int
 
-    # True when at least one candidate has no hard validation errors.
     has_usable_plan: bool
 
-    # Number of repair iterations completed.
     iteration_count: int
 
-    # Maximum repair iterations allowed.
     max_iterations: int
 
-    # Categories already searched during this graph execution.
     searched_categories: list[
         str
     ]
 
-    # Number of live venue-search operations attempted.
     search_count: int
 
-    # RAG semantic retrieval query.
+    # ------------------------------------------------------------------
+    # V2.8 hybrid RAG state
+    # ------------------------------------------------------------------
+
     rag_query: str
 
-    # Final model-readable retrieved context.
     rag_context: str
 
-    # Number of semantic retrieval hits.
     rag_result_count: int
 
-    # IDs of retrieved vector documents.
     rag_document_ids: list[
         str
     ]
 
-    # Venue names ranked by semantic retrieval.
     rag_ranked_venue_names: list[
         str
     ]
 
-    # Whether RAG retrieval executed successfully.
     rag_used: bool
 
-    # Human-readable description of the most recent graph action.
+    # ------------------------------------------------------------------
+    # V2.9 weather state
+    # ------------------------------------------------------------------
+
+    weather_checked: bool
+
+    weather_condition: str
+
+    weather_temperature_c: float
+
+    weather_precipitation_probability: float
+
+    weather_wind_speed_kph: float
+
+    weather_risk_level: str
+
+    weather_outdoor_safe: bool
+
+    weather_reasons: list[
+        str
+    ]
+
+    weather_source: str
+
+    # Whether weather caused the working venue pool to change.
+    weather_adjusted: bool
+
+    # Number of candidates before weather adaptation.
+    weather_original_venue_count: int
+
+    # Number of candidates after weather adaptation.
+    weather_filtered_venue_count: int
+
+    # Outdoor candidates removed because weather was unsafe.
+    weather_removed_venue_names: list[
+        str
+    ]
+
     last_action: str
 
-    # Final graph result message.
     final_message: str
 
-    # True when graph stopped because its bounded repair budget
-    # was exhausted.
     exhausted: bool

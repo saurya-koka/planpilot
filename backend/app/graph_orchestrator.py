@@ -20,6 +20,10 @@ from .graph_rag import (
 from .graph_state import (
     PlanPilotGraphState,
 )
+from .graph_weather import (
+    apply_weather_constraints_node,
+    retrieve_weather_context_node,
+)
 from .models import (
     PlanRequest,
     Venue,
@@ -29,11 +33,6 @@ from .models import (
 def has_unsearched_categories(
     state: PlanPilotGraphState,
 ) -> bool:
-    """
-    Return True when the request requires a venue category that has
-    not yet been searched during this graph run.
-    """
-
     request = state.get(
         "request"
     )
@@ -65,17 +64,6 @@ def has_unsearched_categories(
 def route_after_validation(
     state: PlanPilotGraphState,
 ) -> str:
-    """
-    Choose the next graph strategy.
-
-    1. Finish when a usable plan exists.
-    2. Try deterministic repair.
-    3. After repair, expand the venue pool with search when a required
-       category has not yet been searched.
-    4. Continue bounded repair after search.
-    5. Finish when the iteration budget is exhausted.
-    """
-
     if state.get(
         "has_usable_plan",
         False,
@@ -112,10 +100,6 @@ def route_after_validation(
 def route_after_repair(
     state: PlanPilotGraphState,
 ) -> str:
-    """
-    Validate every repaired candidate before choosing another action.
-    """
-
     if state.get(
         "has_usable_plan",
         False,
@@ -144,13 +128,6 @@ def route_after_repair(
 def route_after_search(
     state: PlanPilotGraphState,
 ) -> str:
-    """
-    Search may rebuild candidate plans.
-
-    Validate the resulting candidate state before taking another
-    action.
-    """
-
     return "validate"
 
 
@@ -159,6 +136,12 @@ def build_planpilot_graph():
     Compile the PlanPilot LangGraph workflow.
 
         initialize
+            |
+            v
+         weather
+            |
+            v
+    weather_constraints
             |
             v
          retrieve
@@ -174,6 +157,9 @@ def build_planpilot_graph():
              |      |
              v      v
           validate validate
+
+    V2.9 uses weather before retrieval/planning so unsafe outdoor
+    venues do not influence RAG ranking or generated itineraries.
     """
 
     graph = StateGraph(
@@ -183,6 +169,16 @@ def build_planpilot_graph():
     graph.add_node(
         "initialize",
         initialize_graph_state,
+    )
+
+    graph.add_node(
+        "weather",
+        retrieve_weather_context_node,
+    )
+
+    graph.add_node(
+        "weather_constraints",
+        apply_weather_constraints_node,
     )
 
     graph.add_node(
@@ -221,6 +217,16 @@ def build_planpilot_graph():
 
     graph.add_edge(
         "initialize",
+        "weather",
+    )
+
+    graph.add_edge(
+        "weather",
+        "weather_constraints",
+    )
+
+    graph.add_edge(
+        "weather_constraints",
         "retrieve",
     )
 
@@ -257,9 +263,7 @@ def build_planpilot_graph():
         "search",
         route_after_search,
         {
-            "validate": (
-                "validate"
-            ),
+            "validate": "validate",
         },
     )
 
@@ -293,7 +297,7 @@ def run_planpilot_graph(
     max_iterations: int = 4,
 ) -> PlanPilotGraphState:
     """
-    Execute the compiled LangGraph workflow.
+    Execute the compiled PlanPilot LangGraph workflow.
     """
 
     if max_iterations < 1:
@@ -303,9 +307,7 @@ def run_planpilot_graph(
         )
 
     initial_state: PlanPilotGraphState = {
-        "user_message": (
-            user_message
-        ),
+        "user_message": user_message,
         "request": request,
         "venues": list(
             venues
@@ -322,12 +324,33 @@ def run_planpilot_graph(
         ),
         "searched_categories": [],
         "search_count": 0,
+
         "rag_query": "",
         "rag_context": "",
         "rag_result_count": 0,
         "rag_document_ids": [],
         "rag_ranked_venue_names": [],
         "rag_used": False,
+
+        "weather_checked": False,
+        "weather_condition": "",
+        "weather_temperature_c": 0.0,
+        "weather_precipitation_probability": 0.0,
+        "weather_wind_speed_kph": 0.0,
+        "weather_risk_level": "",
+        "weather_outdoor_safe": True,
+        "weather_reasons": [],
+        "weather_source": "",
+
+        "weather_adjusted": False,
+        "weather_original_venue_count": len(
+            venues
+        ),
+        "weather_filtered_venue_count": len(
+            venues
+        ),
+        "weather_removed_venue_names": [],
+
         "last_action": "",
         "final_message": "",
         "exhausted": False,
