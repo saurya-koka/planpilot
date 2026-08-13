@@ -2,11 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import (
+    FastAPI,
+    HTTPException,
+)
 
 from .agent_controller import (
     agent_is_configured,
     run_agent,
+)
+from .graph_orchestrator import (
+    run_planpilot_graph,
 )
 from .llm import (
     explain_plan_with_llm,
@@ -19,7 +25,9 @@ from .models import (
     PlaceSearchRequest,
     PlanRequest,
 )
-from .planner import build_plans
+from .planner import (
+    build_plans,
+)
 from .tools.live_candidates import (
     build_live_venues_with_fallback,
 )
@@ -36,7 +44,7 @@ from .tools.routing import (
 
 app = FastAPI(
     title="PlanPilot API",
-    version="0.7.0",
+    version="0.8.0",
 )
 
 
@@ -45,6 +53,7 @@ def root() -> dict[str, str]:
     """
     Confirm that the PlanPilot API is running.
     """
+
     return {
         "name": "PlanPilot API",
         "status": "running",
@@ -53,10 +62,14 @@ def root() -> dict[str, str]:
 
 
 @app.get("/health")
-def health() -> dict[str, bool | str]:
+def health() -> dict[
+    str,
+    bool | str,
+]:
     """
     Report backend and integration status.
     """
+
     return {
         "status": "ok",
         "llm_configured": (
@@ -68,6 +81,7 @@ def health() -> dict[str, bool | str]:
         "places_configured": (
             geoapify_is_configured()
         ),
+        "langgraph_enabled": True,
     }
 
 
@@ -79,7 +93,10 @@ def parsed_to_plan_request(
     Convert parsed natural-language fields into the structured
     PlanRequest used by the deterministic planner.
     """
-    must_include: list[str] = []
+
+    must_include: list[
+        str
+    ] = []
 
     if parsed.include_activity:
         must_include.append(
@@ -161,16 +178,23 @@ def serialize_plans(
     request: PlanRequest,
     plans: list[Any],
 ) -> tuple[
-    list[dict[str, Any]],
+    list[
+        dict[
+            str,
+            Any,
+        ]
+    ],
     str | None,
 ]:
     """
     Serialize itinerary models and generate an optional
     natural-language explanation.
     """
+
     serialized = [
         plan.model_dump()
-        for plan in plans
+        for plan
+        in plans
     ]
 
     explanation = (
@@ -200,6 +224,7 @@ def geocode_start_area(
     Geocode the user's starting area and reject obviously incorrect
     matches that are far outside the requested city's metro area.
     """
+
     try:
         candidate_coordinates = (
             geocode_location(
@@ -261,13 +286,23 @@ def geocode_start_area(
 
 def serialize_start_coordinates(
     coordinates: (
-        tuple[float, float]
+        tuple[
+            float,
+            float,
+        ]
         | None
     ),
-) -> dict[str, float] | None:
+) -> (
+    dict[
+        str,
+        float,
+    ]
+    | None
+):
     """
-    Convert an internal coordinate tuple into API-friendly JSON.
+    Convert internal coordinate tuple into API-friendly JSON.
     """
+
     if coordinates is None:
         return None
 
@@ -284,12 +319,14 @@ def serialize_start_coordinates(
 @app.post("/plans")
 def create_plans(
     request: PlanRequest,
-) -> dict[str, Any]:
+) -> dict[
+    str,
+    Any,
+]:
     """
     Generate itineraries from manually supplied structured fields.
-
-    This endpoint uses the sample venue dataset.
     """
+
     plans = build_plans(
         request=request,
     )
@@ -328,8 +365,9 @@ def parse_request(
     payload: NaturalLanguageRequest,
 ) -> ParsedPlanRequest:
     """
-    Parse a natural-language planning request into structured fields.
+    Parse natural language into structured fields.
     """
+
     return (
         parse_natural_language_request(
             payload.text
@@ -337,14 +375,19 @@ def parse_request(
     )
 
 
-@app.post("/plan-from-text")
+@app.post(
+    "/plan-from-text"
+)
 def plan_from_text(
     payload: NaturalLanguageRequest,
-) -> dict[str, Any]:
+) -> dict[
+    str,
+    Any,
+]:
     """
-    Parse a natural-language request and build plans using
-    the sample venue dataset.
+    Parse natural language and build plans using sample venue data.
     """
+
     parsed = (
         parse_natural_language_request(
             payload.text
@@ -407,13 +450,14 @@ def plan_from_text(
 )
 def plan_from_text_live(
     payload: NaturalLanguageRequest,
-) -> dict[str, Any]:
+) -> dict[
+    str,
+    Any,
+]:
     """
-    Generate itineraries using live Geoapify place candidates.
+    Generate itineraries using live Geoapify candidates.
+    """
 
-    Multiple outing intents are preserved and passed to the live
-    candidate engine.
-    """
     parsed = (
         parse_natural_language_request(
             payload.text
@@ -517,18 +561,14 @@ def plan_from_text_live(
 )
 def agent_plan_from_text(
     payload: NaturalLanguageRequest,
-) -> dict[str, Any]:
+) -> dict[
+    str,
+    Any,
+]:
     """
     Run the V2.5 LLM tool-calling controller.
-
-    The natural-language request is first normalized into PlanPilot's
-    deterministic planning schema. Live venue candidates are loaded
-    when possible, then the LLM controller is allowed to orchestrate
-    only the explicitly exposed PlanPilot tools.
-
-    If OpenAI is unavailable, run_agent() automatically falls back to
-    deterministic planning.
     """
+
     parsed = (
         parse_natural_language_request(
             payload.text
@@ -646,13 +686,174 @@ def agent_plan_from_text(
     }
 
 
-@app.post("/places/search")
+@app.post(
+    "/graph/plan-from-text"
+)
+def graph_plan_from_text(
+    payload: NaturalLanguageRequest,
+) -> dict[
+    str,
+    Any,
+]:
+    """
+    Run the V2.6 LangGraph orchestration workflow.
+
+    The graph owns deterministic control flow across planning,
+    validation, repair, live venue search, replanning, and finish.
+    """
+
+    parsed = (
+        parse_natural_language_request(
+            payload.text
+        )
+    )
+
+    request = (
+        parsed_to_plan_request(
+            parsed=parsed,
+            payload=payload,
+        )
+    )
+
+    (
+        venues,
+        used_live_data,
+    ) = (
+        build_live_venues_with_fallback(
+            request
+        )
+    )
+
+    start_coordinates = (
+        geocode_start_area(
+            request
+        )
+    )
+
+    result = (
+        run_planpilot_graph(
+            user_message=(
+                payload.text
+            ),
+            request=request,
+            venues=venues,
+            start_coordinates=(
+                start_coordinates
+            ),
+            max_iterations=4,
+        )
+    )
+
+    plans = result.get(
+        "plans",
+        [],
+    )
+
+    if not plans:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "The LangGraph workflow "
+                "could not produce an "
+                "itinerary candidate."
+            ),
+        )
+
+    return {
+        "original_text": (
+            payload.text
+        ),
+        "parsed_request": (
+            parsed.model_dump()
+        ),
+        "planning_request": (
+            request.model_dump()
+        ),
+        "graph_success": (
+            result.get(
+                "has_usable_plan",
+                False,
+            )
+        ),
+        "graph_exhausted": (
+            result.get(
+                "exhausted",
+                False,
+            )
+        ),
+        "graph_message": (
+            result.get(
+                "final_message",
+                "",
+            )
+        ),
+        "graph_iterations": (
+            result.get(
+                "iteration_count",
+                0,
+            )
+        ),
+        "graph_search_count": (
+            result.get(
+                "search_count",
+                0,
+            )
+        ),
+        "searched_categories": (
+            result.get(
+                "searched_categories",
+                [],
+            )
+        ),
+        "last_action": (
+            result.get(
+                "last_action",
+                "",
+            )
+        ),
+        "plans": [
+            plan.model_dump()
+            for plan
+            in plans
+        ],
+        "used_live_data": (
+            used_live_data
+        ),
+        "venue_candidate_count": (
+            len(
+                result.get(
+                    "venues",
+                    venues,
+                )
+            )
+        ),
+        "start_coordinates": (
+            serialize_start_coordinates(
+                start_coordinates
+            )
+        ),
+        "data_notice": (
+            "LangGraph orchestrated "
+            "PlanPilot planning, "
+            "validation, repair, venue "
+            "search, and replanning."
+        ),
+    }
+
+
+@app.post(
+    "/places/search"
+)
 def search_live_places(
     payload: PlaceSearchRequest,
-) -> dict[str, Any]:
+) -> dict[
+    str,
+    Any,
+]:
     """
     Search Geoapify directly for live places.
     """
+
     try:
         places = search_places(
             query=payload.query,
