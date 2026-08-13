@@ -14,6 +14,9 @@ from .graph_nodes import (
     search_venues_node,
     validate_plans_node,
 )
+from .graph_rag import (
+    retrieve_rag_context_node,
+)
 from .graph_state import (
     PlanPilotGraphState,
 )
@@ -27,8 +30,8 @@ def has_unsearched_categories(
     state: PlanPilotGraphState,
 ) -> bool:
     """
-    Return True when the request requires at least one venue category
-    that has not yet been searched during this graph run.
+    Return True when the request requires a venue category that has
+    not yet been searched during this graph run.
     """
 
     request = state.get(
@@ -65,12 +68,12 @@ def route_after_validation(
     """
     Choose the next graph strategy.
 
-    1. Finish immediately when a usable plan exists.
-    2. Try deterministic repair first.
-    3. If repair has already been attempted and an unsearched venue
-       category remains, expand the venue pool with live search.
+    1. Finish when a usable plan exists.
+    2. Try deterministic repair.
+    3. After repair, expand the venue pool with search when a required
+       category has not yet been searched.
     4. Continue bounded repair after search.
-    5. Finish when the repair budget is exhausted.
+    5. Finish when the iteration budget is exhausted.
     """
 
     if state.get(
@@ -113,11 +116,9 @@ def route_after_repair(
     Validate every repaired candidate before choosing another action.
     """
 
-    if (
-        state.get(
-            "has_usable_plan",
-            False,
-        )
+    if state.get(
+        "has_usable_plan",
+        False,
     ):
         return "validate"
 
@@ -144,10 +145,10 @@ def route_after_search(
     state: PlanPilotGraphState,
 ) -> str:
     """
-    Search may have rebuilt the candidate collection.
+    Search may rebuild candidate plans.
 
-    Always validate the resulting state before another repair/search
-    decision is made.
+    Validate the resulting candidate state before taking another
+    action.
     """
 
     return "validate"
@@ -158,6 +159,9 @@ def build_planpilot_graph():
     Compile the PlanPilot LangGraph workflow.
 
         initialize
+            |
+            v
+         retrieve
             |
             v
         build_plans
@@ -179,6 +183,11 @@ def build_planpilot_graph():
     graph.add_node(
         "initialize",
         initialize_graph_state,
+    )
+
+    graph.add_node(
+        "retrieve",
+        retrieve_rag_context_node,
     )
 
     graph.add_node(
@@ -212,6 +221,11 @@ def build_planpilot_graph():
 
     graph.add_edge(
         "initialize",
+        "retrieve",
+    )
+
+    graph.add_edge(
+        "retrieve",
         "build_plans",
     )
 
@@ -243,7 +257,9 @@ def build_planpilot_graph():
         "search",
         route_after_search,
         {
-            "validate": "validate",
+            "validate": (
+                "validate"
+            ),
         },
     )
 
@@ -264,9 +280,14 @@ def run_planpilot_graph(
     *,
     user_message: str,
     request: PlanRequest,
-    venues: list[Venue],
+    venues: list[
+        Venue
+    ],
     start_coordinates: (
-        tuple[float, float]
+        tuple[
+            float,
+            float,
+        ]
         | None
     ) = None,
     max_iterations: int = 4,
@@ -301,6 +322,12 @@ def run_planpilot_graph(
         ),
         "searched_categories": [],
         "search_count": 0,
+        "rag_query": "",
+        "rag_context": "",
+        "rag_result_count": 0,
+        "rag_document_ids": [],
+        "rag_ranked_venue_names": [],
+        "rag_used": False,
         "last_action": "",
         "final_message": "",
         "exhausted": False,

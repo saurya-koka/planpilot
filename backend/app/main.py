@@ -696,10 +696,11 @@ def graph_plan_from_text(
     Any,
 ]:
     """
-    Run the V2.6 LangGraph orchestration workflow.
+    Run the V2.7 LangGraph + RAG orchestration workflow.
 
-    The graph owns deterministic control flow across planning,
-    validation, repair, live venue search, replanning, and finish.
+    The graph owns deterministic control flow across semantic
+    retrieval, planning, validation, repair, live venue search,
+    replanning, and finish.
     """
 
     parsed = (
@@ -769,6 +770,10 @@ def graph_plan_from_text(
         "planning_request": (
             request.model_dump()
         ),
+
+        # -----------------------------
+        # LangGraph execution metadata
+        # -----------------------------
         "graph_success": (
             result.get(
                 "has_usable_plan",
@@ -805,12 +810,54 @@ def graph_plan_from_text(
                 [],
             )
         ),
+
+        # -----------------------------
+        # V2.7 RAG metadata
+        # -----------------------------
+        "rag_used": (
+            result.get(
+                "rag_used",
+                False,
+            )
+        ),
+        "rag_result_count": (
+            result.get(
+                "rag_result_count",
+                0,
+            )
+        ),
+        "rag_query": (
+            result.get(
+                "rag_query",
+                "",
+            )
+        ),
+        "rag_ranked_venue_names": (
+            result.get(
+                "rag_ranked_venue_names",
+                [],
+            )
+        ),
+        "rag_document_ids": (
+            result.get(
+                "rag_document_ids",
+                [],
+            )
+        ),
+        "rag_context": (
+            result.get(
+                "rag_context",
+                "",
+            )
+        ),
+
         "last_action": (
             result.get(
                 "last_action",
                 "",
             )
         ),
+
         "plans": [
             plan.model_dump()
             for plan
@@ -835,8 +882,9 @@ def graph_plan_from_text(
         "data_notice": (
             "LangGraph orchestrated "
             "PlanPilot planning, "
-            "validation, repair, venue "
-            "search, and replanning."
+            "RAG retrieval, validation, "
+            "repair, venue search, "
+            "and replanning."
         ),
     }
 

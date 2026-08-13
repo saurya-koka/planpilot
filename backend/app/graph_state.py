@@ -23,7 +23,7 @@ class PlanPilotGraphState(
     # Original natural-language request.
     user_message: str
 
-    # Structured request consumed by the planner.
+    # Structured planner request.
     request: PlanRequest
 
     # Current working venue pool.
@@ -36,7 +36,7 @@ class PlanPilotGraphState(
         Itinerary
     ]
 
-    # Optional geocoded starting point.
+    # Optional geocoded start point.
     start_coordinates: (
         tuple[float, float]
         | None
@@ -45,7 +45,7 @@ class PlanPilotGraphState(
     # Candidate currently selected for repair.
     selected_plan_index: int
 
-    # True when at least one itinerary has no hard validation errors.
+    # True when at least one candidate has no hard validation errors.
     has_usable_plan: bool
 
     # Number of repair iterations completed.
@@ -62,11 +62,34 @@ class PlanPilotGraphState(
     # Number of live venue-search operations attempted.
     search_count: int
 
+    # RAG semantic retrieval query.
+    rag_query: str
+
+    # Final model-readable retrieved context.
+    rag_context: str
+
+    # Number of semantic retrieval hits.
+    rag_result_count: int
+
+    # IDs of retrieved vector documents.
+    rag_document_ids: list[
+        str
+    ]
+
+    # Venue names ranked by semantic retrieval.
+    rag_ranked_venue_names: list[
+        str
+    ]
+
+    # Whether RAG retrieval executed successfully.
+    rag_used: bool
+
     # Human-readable description of the most recent graph action.
     last_action: str
 
     # Final graph result message.
     final_message: str
 
-    # True when the graph stopped because its repair budget was used.
+    # True when graph stopped because its bounded repair budget
+    # was exhausted.
     exhausted: bool
