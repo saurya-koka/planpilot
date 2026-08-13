@@ -716,18 +716,21 @@ def graph_plan_from_text(
         )
     )
 
+    start_coordinates = (
+        geocode_start_area(
+            request
+        )
+    )
+
     (
         venues,
         used_live_data,
     ) = (
         build_live_venues_with_fallback(
-            request
-        )
-    )
-
-    start_coordinates = (
-        geocode_start_area(
-            request
+            request=request,
+            start_coordinates=(
+                start_coordinates
+            ),
         )
     )
 

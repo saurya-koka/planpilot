@@ -2072,7 +2072,22 @@ def _filter_valid_places(
 def _search_category_places(
     request: PlanRequest,
     category: str,
+    start_coordinates: (
+        tuple[
+            float,
+            float,
+        ]
+        | None
+    ) = None,
 ) -> list[PlaceResult]:
+    """
+    Search candidates for one itinerary role.
+
+    When start coordinates are known, Geoapify retrieval is centered
+    around the user's starting area instead of the generic city
+    center.
+    """
+
     config = CATEGORY_SEARCH_CONFIG[
         category
     ]
@@ -2082,19 +2097,26 @@ def _search_category_places(
         category,
     )
 
-    places: list[PlaceResult] = []
+    places: list[
+        PlaceResult
+    ] = []
 
     for query in queries:
         try:
-            query_results = search_places(
-                query=query,
-                city=request.city,
-                category=config[
-                    "default_category"
-                ],
-                limit=config[
-                    "limit_per_query"
-                ],
+            query_results = (
+                search_places(
+                    query=query,
+                    city=request.city,
+                    category=config[
+                        "default_category"
+                    ],
+                    limit=config[
+                        "limit_per_query"
+                    ],
+                    center_coordinates=(
+                        start_coordinates
+                    ),
+                )
             )
 
             places.extend(
@@ -2120,35 +2142,57 @@ def _search_category_places(
         )
     )
 
-    ranked_places = _rank_places(
-        places=valid_places,
-        category=category,
-        request=request,
+    ranked_places = (
+        _rank_places(
+            places=valid_places,
+            category=category,
+            request=request,
+        )
     )
 
     return ranked_places[
-        : config["final_limit"]
+        :config[
+            "final_limit"
+        ]
     ]
 
 
 def build_live_venues(
     request: PlanRequest,
+    start_coordinates: (
+        tuple[
+            float,
+            float,
+        ]
+        | None
+    ) = None,
 ) -> list[Venue]:
     """
     Search, validate, rank, and normalize live venue candidates.
+
+    V2.8 can bias candidate retrieval around the user's starting
+    coordinates before semantic and hybrid reranking.
     """
+
     categories = (
         _requested_categories(
             request
         )
     )
 
-    live_venues: list[Venue] = []
+    live_venues: list[
+        Venue
+    ] = []
 
     for category in categories:
-        places = _search_category_places(
-            request=request,
-            category=category,
+        places = (
+            _search_category_places(
+                request=request,
+                category=category,
+                start_coordinates=(
+                    start_coordinates
+                ),
+            )
         )
 
         live_venues.extend(
@@ -2156,7 +2200,8 @@ def build_live_venues(
                 place,
                 category,
             )
-            for place in places
+            for place
+            in places
         )
 
     return live_venues
@@ -2164,17 +2209,36 @@ def build_live_venues(
 
 def build_live_venues_with_fallback(
     request: PlanRequest,
-) -> tuple[list[Venue], bool]:
+    start_coordinates: (
+        tuple[
+            float,
+            float,
+        ]
+        | None
+    ) = None,
+) -> tuple[
+    list[
+        Venue
+    ],
+    bool,
+]:
     """
     Return validated live venues when all required roles exist.
 
     Otherwise fall back to the sample dataset so the planner remains
     usable.
+
+    When available, start_coordinates are used to improve local
+    candidate recall.
     """
+
     try:
         live_venues = (
             build_live_venues(
-                request
+                request=request,
+                start_coordinates=(
+                    start_coordinates
+                ),
             )
         )
 
@@ -2186,15 +2250,25 @@ def build_live_venues_with_fallback(
 
         returned_categories = {
             venue.category
-            for venue in live_venues
+            for venue
+            in live_venues
         }
 
         if required_categories.issubset(
             returned_categories
         ):
-            return live_venues, True
+            return (
+                live_venues,
+                True,
+            )
 
     except PlaceSearchError:
         pass
 
-    return list(VENUES), False
+    return (
+        list(
+            VENUES
+        ),
+        False,
+    )
+

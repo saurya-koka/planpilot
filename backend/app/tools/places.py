@@ -960,6 +960,13 @@ def search_places(
     city: str,
     category: str | None = None,
     limit: int = 10,
+    center_coordinates: (
+        tuple[
+            float,
+            float,
+        ]
+        | None
+    ) = None,
 ) -> list[PlaceResult]:
     """
     Search Geoapify using query-aware category mapping.
@@ -967,10 +974,16 @@ def search_places(
     The process is:
 
     1. Interpret the natural-language query.
-    2. Search using specific Geoapify categories/conditions.
-    3. Search broader fallback categories if too few places return.
-    4. Deduplicate and rank all candidates locally.
+    2. Use explicit local coordinates when supplied.
+    3. Otherwise fall back to the city center.
+    4. Search using specific Geoapify categories/conditions.
+    5. Search broader fallback categories if too few places return.
+    6. Deduplicate and rank all candidates locally.
+
+    V2.8 uses center_coordinates to bias venue recall around the
+    user's actual starting area rather than the broad city center.
     """
+
     api_key = os.getenv(
         "GEOAPIFY_API_KEY"
     )
@@ -990,54 +1003,96 @@ def search_places(
         supplied_category=category,
     )
 
-    latitude, longitude = geocode_city(
-        city
-    )
+    if center_coordinates is not None:
+        latitude = float(
+            center_coordinates[
+                0
+            ]
+        )
+
+        longitude = float(
+            center_coordinates[
+                1
+            ]
+        )
+
+    else:
+        latitude, longitude = (
+            geocode_city(
+                city
+            )
+        )
 
     primary_places = _request_places(
         latitude=latitude,
         longitude=longitude,
-        categories=interpretation.categories,
-        conditions=interpretation.conditions,
+        categories=(
+            interpretation.categories
+        ),
+        conditions=(
+            interpretation.conditions
+        ),
         result_limit=min(
-            max(limit * 5, 20),
+            max(
+                limit * 5,
+                20,
+            ),
             100,
         ),
         api_key=api_key,
     )
 
-    all_places = list(primary_places)
+    all_places = list(
+        primary_places
+    )
 
-    # Broaden only if the specific query did not produce enough
-    # candidates. This avoids spending an extra API call for every
-    # successful search.
+    # Broaden only when the specific query did not produce enough
+    # candidates. The same location bias is preserved for fallback
+    # retrieval.
     if (
-        len(primary_places) < limit
+        len(
+            primary_places
+        ) < limit
         and interpretation.fallback_categories
     ):
-        fallback_places = _request_places(
-            latitude=latitude,
-            longitude=longitude,
-            categories=interpretation.fallback_categories,
-            conditions=[],
-            result_limit=min(
-                max(limit * 5, 20),
-                100,
-            ),
-            api_key=api_key,
+        fallback_places = (
+            _request_places(
+                latitude=latitude,
+                longitude=longitude,
+                categories=(
+                    interpretation
+                    .fallback_categories
+                ),
+                conditions=[],
+                result_limit=min(
+                    max(
+                        limit * 5,
+                        20,
+                    ),
+                    100,
+                ),
+                api_key=api_key,
+            )
         )
 
         all_places.extend(
             fallback_places
         )
 
-    unique_places = _deduplicate_places(
-        all_places
+    unique_places = (
+        _deduplicate_places(
+            all_places
+        )
     )
 
-    ranked_places = _rank_places(
-        unique_places,
-        interpretation,
+    ranked_places = (
+        _rank_places(
+            unique_places,
+            interpretation,
+        )
     )
 
-    return ranked_places[:limit]
+    return ranked_places[
+        :limit
+    ]
+

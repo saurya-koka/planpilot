@@ -14,16 +14,30 @@ from .models import (
 from .rag_documents import (
     venues_to_vector_documents,
 )
+from .reranker import (
+    RerankedResult,
+    rerank_results,
+)
 from .vector_store import (
     PlanPilotVectorStore,
     RetrievalResult,
 )
 
 
+DEFAULT_RETRIEVAL_CANDIDATE_MULTIPLIER = 3
+DEFAULT_MAX_RETRIEVAL_CANDIDATES = 20
+
+
 @dataclass
 class RetrievalContext:
     """
     Final RAG result consumed by PlanPilot orchestration.
+
+    results:
+        Final retrieval order consumed by the graph.
+
+    reranked_results:
+        Explainable hybrid-scored records used to produce that order.
     """
 
     query: str
@@ -34,6 +48,10 @@ class RetrievalContext:
 
     context_text: str
 
+    reranked_results: list[
+        RerankedResult
+    ]
+
 
 class PlanPilotRetriever:
     """
@@ -43,6 +61,7 @@ class PlanPilotRetriever:
     - ingest normalized Venue objects
     - perform semantic retrieval
     - optionally filter by venue category
+    - perform hybrid semantic + structured reranking
     - build compact RAG context text
     """
 
@@ -118,6 +137,8 @@ class PlanPilotRetriever:
     ]:
         """
         Retrieve semantically relevant venue documents.
+
+        This preserves the original V2.7 raw semantic-retrieval API.
         """
 
         where = None
@@ -135,6 +156,79 @@ class PlanPilotRetriever:
                 limit=limit,
                 where=where,
             )
+        )
+
+    def retrieve_hybrid(
+        self,
+        *,
+        query: str,
+        request: PlanRequest,
+        limit: int = 5,
+        category: (
+            str
+            | None
+        ) = None,
+        start_coordinates: (
+            tuple[
+                float,
+                float,
+            ]
+            | None
+        ) = None,
+        candidate_limit: (
+            int
+            | None
+        ) = None,
+    ) -> list[
+        RerankedResult
+    ]:
+        """
+        Retrieve a broader semantic candidate set and rerank it using
+        deterministic PlanPilot constraints.
+
+        The semantic search remains the recall stage.
+
+        The deterministic reranker becomes the precision stage.
+        """
+
+        if limit < 1:
+            raise ValueError(
+                "limit must be at least 1."
+            )
+
+        if candidate_limit is None:
+            candidate_limit = min(
+                DEFAULT_MAX_RETRIEVAL_CANDIDATES,
+                max(
+                    limit,
+                    (
+                        limit
+                        * DEFAULT_RETRIEVAL_CANDIDATE_MULTIPLIER
+                    ),
+                ),
+            )
+
+        if candidate_limit < limit:
+            candidate_limit = limit
+
+        semantic_results = (
+            self.retrieve(
+                query=query,
+                limit=candidate_limit,
+                category=category,
+            )
+        )
+
+        return rerank_results(
+            results=semantic_results,
+            request=request,
+            desired_category=(
+                category
+            ),
+            start_coordinates=(
+                start_coordinates
+            ),
+            limit=limit,
         )
 
     def clear(
@@ -230,7 +324,8 @@ def format_retrieval_result(
     rank: int,
 ) -> str:
     """
-    Convert one retrieval hit into compact model-readable context.
+    Convert one raw semantic retrieval hit into compact
+    model-readable context.
     """
 
     metadata = (
@@ -307,6 +402,120 @@ def format_retrieval_result(
     )
 
 
+def format_reranked_result(
+    *,
+    reranked: RerankedResult,
+    rank: int,
+) -> str:
+    """
+    Convert one hybrid-ranked venue into explainable model context.
+    """
+
+    result = (
+        reranked.result
+    )
+
+    metadata = (
+        result.metadata
+        or {}
+    )
+
+    name = (
+        metadata.get(
+            "name",
+            result.document_id,
+        )
+    )
+
+    category = (
+        metadata.get(
+            "category",
+            "unknown",
+        )
+    )
+
+    area = (
+        metadata.get(
+            "area",
+            "unknown",
+        )
+    )
+
+    cost = (
+        metadata.get(
+            "estimated_cost_per_person"
+        )
+    )
+
+    breakdown = (
+        reranked.breakdown
+    )
+
+    lines = [
+        (
+            f"[{rank}] "
+            f"{name}"
+        ),
+        (
+            "Category: "
+            f"{category}"
+        ),
+        (
+            "Area: "
+            f"{area}"
+        ),
+        (
+            "Hybrid score: "
+            f"{reranked.final_score:.4f}"
+        ),
+        (
+            "Score breakdown: "
+            f"semantic={breakdown.semantic:.3f}, "
+            f"category={breakdown.category:.3f}, "
+            f"food={breakdown.food:.3f}, "
+            f"vibe={breakdown.vibe:.3f}, "
+            f"area={breakdown.area:.3f}, "
+            f"budget={breakdown.budget:.3f}, "
+            f"proximity={breakdown.proximity:.3f}"
+        ),
+    ]
+
+    if cost is not None:
+        lines.append(
+            (
+                "Estimated cost per "
+                f"person: ${cost}"
+            )
+        )
+
+    if result.distance is not None:
+        lines.append(
+            (
+                "Vector distance: "
+                f"{result.distance:.4f}"
+            )
+        )
+
+    if reranked.reasons:
+        lines.append(
+            (
+                "Ranking reasons: "
+                f"{', '.join(reranked.reasons)}"
+            )
+        )
+
+    lines.append(
+        (
+            "Context: "
+            f"{result.text}"
+        )
+    )
+
+    return "\n".join(
+        lines
+    )
+
+
 def build_rag_context(
     *,
     query: str,
@@ -315,7 +524,9 @@ def build_rag_context(
     ],
 ) -> str:
     """
-    Build a bounded textual RAG context block.
+    Build the original V2.7 semantic-only context block.
+
+    Kept for backwards compatibility and isolated semantic tests.
     """
 
     if not results:
@@ -351,6 +562,57 @@ def build_rag_context(
     )
 
 
+def build_hybrid_rag_context(
+    *,
+    query: str,
+    reranked_results: list[
+        RerankedResult
+    ],
+) -> str:
+    """
+    Build the V2.8 hybrid retrieval context.
+
+    The final order is determined by semantic recall followed by
+    structured deterministic reranking.
+    """
+
+    if not reranked_results:
+        return (
+            "No relevant PlanPilot "
+            "knowledge was retrieved."
+        )
+
+    sections = [
+        (
+            "PlanPilot hybrid-retrieved "
+            "venue context"
+        ),
+        (
+            "Query: "
+            f"{query}"
+        ),
+        (
+            "Ranking method: semantic retrieval "
+            "plus deterministic constraint reranking."
+        ),
+    ]
+
+    for rank, reranked in enumerate(
+        reranked_results,
+        start=1,
+    ):
+        sections.append(
+            format_reranked_result(
+                reranked=reranked,
+                rank=rank,
+            )
+        )
+
+    return "\n\n".join(
+        sections
+    )
+
+
 def retrieve_context_for_request(
     *,
     retriever: PlanPilotRetriever,
@@ -361,9 +623,26 @@ def retrieve_context_for_request(
         str
         | None
     ) = None,
+    start_coordinates: (
+        tuple[
+            float,
+            float,
+        ]
+        | None
+    ) = None,
+    use_hybrid_reranking: bool = True,
 ) -> RetrievalContext:
     """
     Run the complete RAG retrieval workflow for one planning request.
+
+    V2.8 defaults to hybrid retrieval:
+        semantic recall
+            ->
+        deterministic structured reranking
+            ->
+        final RAG context
+
+    The semantic-only path is preserved for backwards compatibility.
     """
 
     query = build_request_query(
@@ -373,25 +652,59 @@ def retrieve_context_for_request(
         request=request,
     )
 
-    results = (
-        retriever.retrieve(
-            query=query,
-            limit=limit,
-            category=category,
+    if use_hybrid_reranking:
+        reranked_results = (
+            retriever.retrieve_hybrid(
+                query=query,
+                request=request,
+                limit=limit,
+                category=category,
+                start_coordinates=(
+                    start_coordinates
+                ),
+            )
         )
-    )
 
-    context_text = (
-        build_rag_context(
-            query=query,
-            results=results,
+        results = [
+            item.result
+            for item
+            in reranked_results
+        ]
+
+        context_text = (
+            build_hybrid_rag_context(
+                query=query,
+                reranked_results=(
+                    reranked_results
+                ),
+            )
         )
-    )
+
+    else:
+        results = (
+            retriever.retrieve(
+                query=query,
+                limit=limit,
+                category=category,
+            )
+        )
+
+        reranked_results = []
+
+        context_text = (
+            build_rag_context(
+                query=query,
+                results=results,
+            )
+        )
 
     return RetrievalContext(
         query=query,
         results=results,
         context_text=(
             context_text
+        ),
+        reranked_results=(
+            reranked_results
         ),
     )

@@ -274,3 +274,144 @@ def test_graph_retriever_can_use_local_storage(
         retriever.count()
         == 0
     )
+def test_graph_rag_uses_start_coordinates_for_hybrid_ranking(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.embeddings import (
+        DeterministicEmbeddingProvider,
+    )
+    from backend.app.graph_rag import (
+        retrieve_rag_context_node,
+    )
+    from backend.app.models import (
+        PlanRequest,
+        Venue,
+    )
+    from backend.app.rag_retriever import (
+        PlanPilotRetriever,
+    )
+
+    retriever = PlanPilotRetriever(
+        persist_directory=str(
+            tmp_path
+            / "graph_hybrid"
+        ),
+        collection_name=(
+            "graph_hybrid_test"
+        ),
+        embedding_provider=(
+            DeterministicEmbeddingProvider(
+                dimensions=64,
+            )
+        ),
+        prefer_live_embeddings=False,
+    )
+
+    monkeypatch.setattr(
+        "backend.app.graph_rag."
+        "build_graph_retriever",
+        lambda: retriever,
+    )
+
+    request = PlanRequest(
+        city="Boston",
+        start_area="Back Bay",
+        budget_total=120,
+        party_size=2,
+        transport="walking",
+        vibe=[
+            "chill",
+        ],
+        must_include=[
+            "dinner",
+        ],
+        food_preferences=[
+            "chicken",
+        ],
+        max_leg_minutes=45,
+    )
+
+    far_venue = Venue(
+        name="Far Chicken",
+        category="restaurant",
+        area="Back Bay",
+        estimated_cost_per_person=30,
+        duration_minutes=90,
+        vibe=[
+            "chill",
+        ],
+        food_tags=[
+            "chicken",
+        ],
+        latitude=42.4100,
+        longitude=-71.1500,
+        source="sample",
+    )
+
+    near_venue = Venue(
+        name="Near Chicken",
+        category="restaurant",
+        area="Back Bay",
+        estimated_cost_per_person=30,
+        duration_minutes=90,
+        vibe=[
+            "chill",
+        ],
+        food_tags=[
+            "chicken",
+        ],
+        latitude=42.3500,
+        longitude=-71.0800,
+        source="sample",
+    )
+
+    state = {
+        "user_message": (
+            "Plan a chill chicken "
+            "dinner in Back Bay."
+        ),
+        "request": request,
+        "venues": [
+            far_venue,
+            near_venue,
+        ],
+        "start_coordinates": (
+            42.3493,
+            -71.0810,
+        ),
+    }
+
+    result = (
+        retrieve_rag_context_node(
+            state
+        )
+    )
+
+    assert (
+        result[
+            "rag_used"
+        ]
+        is True
+    )
+
+    assert (
+        result[
+            "rag_ranked_venue_names"
+        ][0]
+        == "Near Chicken"
+    )
+
+    assert (
+        result[
+            "venues"
+        ][0].name
+        == "Near Chicken"
+    )
+
+    assert (
+        "proximity="
+        in result[
+            "rag_context"
+        ]
+    )

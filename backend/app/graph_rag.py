@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 
 from .embeddings import (
-    DeterministicEmbeddingProvider,
     get_embedding_provider,
 )
 from .graph_state import (
@@ -106,11 +105,11 @@ def prioritize_venues(
     Venue
 ]:
     """
-    Move semantically retrieved venues to the front while preserving
-    all remaining venues.
+    Move hybrid-ranked venues to the front while preserving all
+    remaining venues.
 
-    RAG therefore influences planning without deleting deterministic
-    fallback candidates.
+    Retrieval therefore influences planning without deleting
+    deterministic fallback candidates.
     """
 
     if (
@@ -164,11 +163,25 @@ def retrieve_rag_context_node(
     state: PlanPilotGraphState,
 ) -> PlanPilotGraphState:
     """
-    Ingest the graph's current venue pool into ChromaDB and retrieve
-    semantically relevant venue context for the user's request.
+    Run V2.8 hybrid retrieval for the current LangGraph state.
 
-    Retrieved venue names are then used to prioritize the graph's
-    working venue pool before deterministic planning.
+    Workflow:
+        venue pool
+            ->
+        Chroma semantic recall
+            ->
+        deterministic structured reranking
+            ->
+        prioritize graph venue pool
+
+    Structured reranking uses:
+    - semantic relevance
+    - category
+    - food preference
+    - vibe
+    - area
+    - budget
+    - geographic proximity
     """
 
     request = state[
@@ -187,6 +200,12 @@ def retrieve_rag_context_node(
         "",
     )
 
+    start_coordinates = (
+        state.get(
+            "start_coordinates"
+        )
+    )
+
     if not venues:
         return {
             "rag_query": "",
@@ -200,7 +219,7 @@ def retrieve_rag_context_node(
             "rag_ranked_venue_names": [],
             "rag_used": False,
             "last_action": (
-                "RAG retrieval skipped "
+                "Hybrid retrieval skipped "
                 "because the venue pool "
                 "was empty."
             ),
@@ -228,6 +247,10 @@ def retrieve_rag_context_node(
                         venues
                     ),
                 ),
+                start_coordinates=(
+                    start_coordinates
+                ),
+                use_hybrid_reranking=True,
             )
         )
 
@@ -235,15 +258,16 @@ def retrieve_rag_context_node(
         return {
             "rag_query": "",
             "rag_context": (
-                "RAG retrieval was "
-                "unavailable."
+                "Hybrid RAG retrieval "
+                "was unavailable."
             ),
             "rag_result_count": 0,
             "rag_document_ids": [],
             "rag_ranked_venue_names": [],
             "rag_used": False,
             "last_action": (
-                "RAG retrieval failed: "
+                "Hybrid RAG retrieval "
+                "failed: "
                 f"{exc}"
             ),
         }
@@ -305,9 +329,8 @@ def retrieve_rag_context_node(
             context.results
         ),
         "last_action": (
-            "RAG retrieved "
-            f"{len(context.results)} "
-            "relevant venue "
-            "document(s)."
+            "Hybrid RAG retrieved and "
+            f"reranked {len(context.results)} "
+            "venue document(s)."
         ),
     }

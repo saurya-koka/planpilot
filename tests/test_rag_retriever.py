@@ -329,10 +329,10 @@ def test_complete_retrieval_context_workflow(
     )
 
     assert (
-        "PlanPilot retrieved "
-        "venue context"
-        in context.context_text
-    )
+    	"PlanPilot hybrid-retrieved "
+    	"venue context"
+    	in context.context_text
+	)
 
     assert (
         "Chill Chicken Spot"
