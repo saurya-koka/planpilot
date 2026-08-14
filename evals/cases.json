@@ -1,0 +1,66 @@
+[
+	{
+		"id": "boston_back_bay_date",
+		"text": "Plan a chill evening in Boston with an activity and chicken dinner for two people under 120 dollars.",
+		"start_area": "Back Bay",
+		"expected": {
+			"city": "Boston",
+			"max_budget": 120,
+			"required_categories": [
+				"activity",
+				"restaurant"
+			]
+		}
+	},
+	{
+		"id": "boston_budget_dinner",
+		"text": "Plan a cheap dinner in Boston for two people under 70 dollars.",
+		"start_area": "Back Bay",
+		"expected": {
+			"city": "Boston",
+			"max_budget": 70,
+			"required_categories": [
+				"restaurant"
+			]
+		}
+	},
+	{
+		"id": "boston_activity_dinner",
+		"text": "Plan an activity and dinner in Boston for two people under 150 dollars.",
+		"start_area": "Davis Square",
+		"expected": {
+			"city": "Boston",
+			"max_budget": 150,
+			"required_categories": [
+				"activity",
+				"restaurant"
+			]
+		}
+	},
+	{
+		"id": "boston_chicken_dinner",
+		"text": "Find me a chicken dinner in Boston for two people under 100 dollars.",
+		"start_area": "Back Bay",
+		"expected": {
+			"city": "Boston",
+			"max_budget": 100,
+			"required_categories": [
+				"restaurant"
+			]
+		}
+	},
+	{
+		"id": "boston_date_with_dessert",
+		"text": "Plan a fun Boston date with an activity, dinner, and dessert for two people under 180 dollars.",
+		"start_area": "Back Bay",
+		"expected": {
+			"city": "Boston",
+			"max_budget": 180,
+			"required_categories": [
+				"activity",
+				"restaurant",
+				"dessert"
+			]
+		}
+	}
+]

@@ -173,15 +173,27 @@ def test_search_node_merges_live_venue(
         city,
         category,
         limit,
+        center_coordinates=None,
     ):
-        assert city == "Boston"
+        assert (
+            city
+            == "Boston"
+        )
 
         assert (
             category
             == "catering.restaurant"
         )
 
-        assert limit == 10
+        assert (
+            limit
+            == 10
+        )
+
+        assert (
+            center_coordinates
+            is None
+        )
 
         return [
             place,
@@ -257,7 +269,9 @@ def test_search_node_does_not_repeat_category(
         **kwargs,
     ):
         nonlocal called
+
         called = True
+
         return []
 
     monkeypatch.setattr(

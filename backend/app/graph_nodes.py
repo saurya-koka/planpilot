@@ -491,13 +491,18 @@ def search_venues_node(
 
     try:
         places = search_places(
-            query=query,
-            city=request.city,
-            category=(
-                provider_category
-            ),
-            limit=10,
-        )
+			query=query,
+			city=request.city,
+			category=(
+				provider_category
+			),
+			limit=10,
+			center_coordinates=(
+				state.get(
+					"start_coordinates"
+				)
+			),
+		)
 
     except PlaceSearchError as exc:
         return {

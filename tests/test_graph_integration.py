@@ -143,6 +143,7 @@ def test_compiled_graph_can_take_search_path(
         city,
         category,
         limit,
+        center_coordinates=None,
     ):
         nonlocal search_call_count
 
@@ -161,6 +162,11 @@ def test_compiled_graph_can_take_search_path(
         assert (
             limit
             == 10
+        )
+
+        assert (
+            center_coordinates
+            is None
         )
 
         return [

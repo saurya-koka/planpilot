@@ -10,3 +10,5 @@ __pycache__/
 .planpilot_chroma/
 
 .DS_Store
+
+evals/results/
