@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from time import perf_counter
+
 from langgraph.graph import (
     END,
     StateGraph,
@@ -27,6 +29,10 @@ from .graph_weather import (
 from .models import (
     PlanRequest,
     Venue,
+)
+from .observability import (
+    TRACE_STORE,
+    traced_node,
 )
 
 
@@ -158,8 +164,7 @@ def build_planpilot_graph():
              v      v
           validate validate
 
-    V2.9 uses weather before retrieval/planning so unsafe outdoor
-    venues do not influence RAG ranking or generated itineraries.
+    V2.12 wraps every execution node with native PlanPilot tracing.
     """
 
     graph = StateGraph(
@@ -168,47 +173,84 @@ def build_planpilot_graph():
 
     graph.add_node(
         "initialize",
-        initialize_graph_state,
+        traced_node(
+            node_name="initialize",
+            node=initialize_graph_state,
+        ),
     )
 
     graph.add_node(
         "weather",
-        retrieve_weather_context_node,
+        traced_node(
+            node_name="weather",
+            node=(
+                retrieve_weather_context_node
+            ),
+        ),
     )
 
     graph.add_node(
         "weather_constraints",
-        apply_weather_constraints_node,
+        traced_node(
+            node_name=(
+                "weather_constraints"
+            ),
+            node=(
+                apply_weather_constraints_node
+            ),
+        ),
     )
 
     graph.add_node(
         "retrieve",
-        retrieve_rag_context_node,
+        traced_node(
+            node_name="retrieve",
+            node=(
+                retrieve_rag_context_node
+            ),
+        ),
     )
 
     graph.add_node(
         "build_plans",
-        build_plans_node,
+        traced_node(
+            node_name="build_plans",
+            node=build_plans_node,
+        ),
     )
 
     graph.add_node(
         "validate",
-        validate_plans_node,
+        traced_node(
+            node_name="validate",
+            node=validate_plans_node,
+        ),
     )
 
     graph.add_node(
         "repair",
-        repair_selected_plan_node,
+        traced_node(
+            node_name="repair",
+            node=(
+                repair_selected_plan_node
+            ),
+        ),
     )
 
     graph.add_node(
         "search",
-        search_venues_node,
+        traced_node(
+            node_name="search",
+            node=search_venues_node,
+        ),
     )
 
     graph.add_node(
         "finish",
-        finish_graph_node,
+        traced_node(
+            node_name="finish",
+            node=finish_graph_node,
+        ),
     )
 
     graph.set_entry_point(
@@ -298,6 +340,8 @@ def run_planpilot_graph(
 ) -> PlanPilotGraphState:
     """
     Execute the compiled PlanPilot LangGraph workflow.
+
+    V2.12 creates one structured trace for the complete graph run.
     """
 
     if max_iterations < 1:
@@ -306,60 +350,242 @@ def run_planpilot_graph(
             "at least 1."
         )
 
+    trace = (
+        TRACE_STORE.start_trace(
+            metadata={
+                "city": (
+                    request.city
+                ),
+                "start_area": (
+                    request.start_area
+                ),
+                "max_iterations": (
+                    max_iterations
+                ),
+                "initial_venue_count": (
+                    len(
+                        venues
+                    )
+                ),
+            }
+        )
+    )
+
+    trace_id = (
+        trace.trace_id
+    )
+
     initial_state: PlanPilotGraphState = {
-        "user_message": user_message,
+        "trace_id": (
+            trace_id
+        ),
+
+        "user_message": (
+            user_message
+        ),
+
         "request": request,
+
         "venues": list(
             venues
         ),
+
         "plans": [],
+
         "start_coordinates": (
             start_coordinates
         ),
+
         "selected_plan_index": 0,
+
         "has_usable_plan": False,
+
         "iteration_count": 0,
+
         "max_iterations": (
             max_iterations
         ),
+
         "searched_categories": [],
+
         "search_count": 0,
 
         "rag_query": "",
+
         "rag_context": "",
+
         "rag_result_count": 0,
+
         "rag_document_ids": [],
+
         "rag_ranked_venue_names": [],
+
         "rag_used": False,
 
         "weather_checked": False,
+
         "weather_condition": "",
+
         "weather_temperature_c": 0.0,
-        "weather_precipitation_probability": 0.0,
+
+        "weather_precipitation_probability": (
+            0.0
+        ),
+
         "weather_wind_speed_kph": 0.0,
+
         "weather_risk_level": "",
+
         "weather_outdoor_safe": True,
+
         "weather_reasons": [],
+
         "weather_source": "",
 
         "weather_adjusted": False,
-        "weather_original_venue_count": len(
-            venues
+
+        "weather_original_venue_count": (
+            len(
+                venues
+            )
         ),
-        "weather_filtered_venue_count": len(
-            venues
+
+        "weather_filtered_venue_count": (
+            len(
+                venues
+            )
         ),
+
         "weather_removed_venue_names": [],
 
         "last_action": "",
+
         "final_message": "",
+
         "exhausted": False,
     }
 
-    result = (
-        PLANPILOT_GRAPH.invoke(
-            initial_state
+    started = (
+        perf_counter()
+    )
+
+    try:
+        result = (
+            PLANPILOT_GRAPH.invoke(
+                initial_state
+            )
         )
+
+    except Exception as exc:
+        total_duration_ms = (
+            (
+                perf_counter()
+                - started
+            )
+            * 1000
+        )
+
+        TRACE_STORE.finish_trace(
+            trace_id=trace_id,
+            status="error",
+            total_duration_ms=(
+                total_duration_ms
+            ),
+            metadata={
+                "error": str(
+                    exc
+                ),
+            },
+        )
+
+        raise
+
+    total_duration_ms = (
+        (
+            perf_counter()
+            - started
+        )
+        * 1000
+    )
+
+    has_usable = (
+        result.get(
+            "has_usable_plan",
+            False,
+        )
+    )
+
+    exhausted = (
+        result.get(
+            "exhausted",
+            False,
+        )
+    )
+
+    trace_status = (
+        "success"
+        if has_usable
+        else "completed"
+    )
+
+    TRACE_STORE.finish_trace(
+        trace_id=trace_id,
+        status=trace_status,
+        total_duration_ms=(
+            total_duration_ms
+        ),
+        metadata={
+            "has_usable_plan": (
+                has_usable
+            ),
+            "exhausted": (
+                exhausted
+            ),
+            "iteration_count": (
+                result.get(
+                    "iteration_count",
+                    0,
+                )
+            ),
+            "search_count": (
+                result.get(
+                    "search_count",
+                    0,
+                )
+            ),
+            "final_plan_count": (
+                len(
+                    result.get(
+                        "plans",
+                        [],
+                    )
+                )
+            ),
+            "rag_used": (
+                result.get(
+                    "rag_used",
+                    False,
+                )
+            ),
+            "rag_result_count": (
+                result.get(
+                    "rag_result_count",
+                    0,
+                )
+            ),
+            "weather_checked": (
+                result.get(
+                    "weather_checked",
+                    False,
+                )
+            ),
+            "weather_adjusted": (
+                result.get(
+                    "weather_adjusted",
+                    False,
+                )
+            ),
+        },
     )
 
     return result

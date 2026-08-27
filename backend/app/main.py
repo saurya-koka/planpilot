@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from .observability_api import (
+    router as observability_router,
+)
+
 from typing import Any
 
 from fastapi import (
@@ -45,6 +49,10 @@ from .tools.routing import (
 app = FastAPI(
     title="PlanPilot API",
     version="0.8.0",
+)
+
+app.include_router(
+    observability_router
 )
 
 
@@ -773,6 +781,12 @@ def graph_plan_from_text(
         "planning_request": (
             request.model_dump()
         ),
+
+		"trace_id": (
+			result.get(
+				"trace_id"
+			)
+		),
 
         # -----------------------------
         # LangGraph execution metadata
