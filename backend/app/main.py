@@ -1,19 +1,21 @@
 from __future__ import annotations
 
-from .observability_api import (
-    router as observability_router,
-)
-
 from typing import Any
 
 from fastapi import (
     FastAPI,
     HTTPException,
 )
+from fastapi.middleware.cors import (
+    CORSMiddleware,
+)
 
 from .agent_controller import (
     agent_is_configured,
     run_agent,
+)
+from .config import (
+    SETTINGS,
 )
 from .graph_orchestrator import (
     run_planpilot_graph,
@@ -28,6 +30,9 @@ from .models import (
     ParsedPlanRequest,
     PlaceSearchRequest,
     PlanRequest,
+)
+from .observability_api import (
+    router as observability_router,
 )
 from .planner import (
     build_plans,
@@ -49,7 +54,34 @@ from .tools.routing import (
 app = FastAPI(
     title="PlanPilot API",
     version="0.8.0",
+    debug=SETTINGS.debug,
+    docs_url=(
+        "/docs"
+        if SETTINGS.docs_enabled
+        else None
+    ),
+    redoc_url=(
+        "/redoc"
+        if SETTINGS.docs_enabled
+        else None
+    ),
 )
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=(
+        SETTINGS.cors_origins
+    ),
+    allow_credentials=True,
+    allow_methods=[
+        "*",
+    ],
+    allow_headers=[
+        "*",
+    ],
+)
+
 
 app.include_router(
     observability_router
@@ -65,7 +97,11 @@ def root() -> dict[str, str]:
     return {
         "name": "PlanPilot API",
         "status": "running",
-        "docs": "/docs",
+        "docs": (
+            "/docs"
+            if SETTINGS.docs_enabled
+            else "disabled"
+        ),
     }
 
 
@@ -80,6 +116,12 @@ def health() -> dict[
 
     return {
         "status": "ok",
+        "environment": (
+            SETTINGS.environment
+        ),
+        "docs_enabled": (
+            SETTINGS.docs_enabled
+        ),
         "llm_configured": (
             llm_is_configured()
         ),
@@ -704,11 +746,11 @@ def graph_plan_from_text(
     Any,
 ]:
     """
-    Run the V2.7 LangGraph + RAG orchestration workflow.
+    Run the PlanPilot LangGraph orchestration workflow.
 
-    The graph owns deterministic control flow across semantic
-    retrieval, planning, validation, repair, live venue search,
-    replanning, and finish.
+    The graph owns control flow across hybrid retrieval, planning,
+    weather adaptation, validation, repair, live venue search,
+    replanning, observability, and finish.
     """
 
     parsed = (
@@ -782,11 +824,14 @@ def graph_plan_from_text(
             request.model_dump()
         ),
 
-		"trace_id": (
-			result.get(
-				"trace_id"
-			)
-		),
+        # -----------------------------
+        # V2.12 observability metadata
+        # -----------------------------
+        "trace_id": (
+            result.get(
+                "trace_id"
+            )
+        ),
 
         # -----------------------------
         # LangGraph execution metadata
@@ -829,7 +874,7 @@ def graph_plan_from_text(
         ),
 
         # -----------------------------
-        # V2.7 RAG metadata
+        # V2.7 / V2.8 RAG metadata
         # -----------------------------
         "rag_used": (
             result.get(
@@ -985,7 +1030,7 @@ def graph_plan_from_text(
             "weather assessment, "
             "weather-aware venue adaptation, "
             "validation, repair, venue search, "
-            "and replanning."
+            "replanning, and observability."
         ),
     }
 

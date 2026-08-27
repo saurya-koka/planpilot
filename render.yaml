@@ -1,0 +1,48 @@
+services:
+  - type: web
+    name: planpilot-api
+    runtime: python
+    plan: free
+
+    buildCommand: pip install -r requirements.txt
+
+    startCommand: >
+      uvicorn backend.app.main:app
+      --host 0.0.0.0
+      --port $PORT
+
+    healthCheckPath: /health
+
+    envVars:
+      - key: PLANPILOT_ENV
+        value: production
+
+      - key: DEBUG
+        value: "false"
+
+      - key: DOCS_ENABLED
+        value: "false"
+
+      - key: OPENAI_MODEL
+        value: gpt-5
+
+      - key: PLACES_PROVIDER
+        value: geoapify
+
+      - key: ROUTING_PROVIDER
+        value: geoapify
+
+      - key: ROUTING_TIMEOUT_SECONDS
+        value: "10"
+
+      - key: PLANPILOT_LIVE_WEATHER
+        value: "true"
+
+      - key: OPENAI_API_KEY
+        sync: false
+
+      - key: GEOAPIFY_API_KEY
+        sync: false
+
+      - key: CORS_ORIGINS
+        sync: false
