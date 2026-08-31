@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from backend.app.models import ParsedPlanRequest
 
+
 load_dotenv()
 
 
@@ -138,13 +139,17 @@ VIBE_PATTERNS = {
 }
 
 
-def _clean_text(text: str) -> str:
+def _clean_text(
+    text: str,
+) -> str:
     cleaned = text.lower().strip()
+
     cleaned = re.sub(
         r"\s+",
         " ",
         cleaned,
     )
+
     return cleaned
 
 
@@ -179,7 +184,10 @@ def _detect_vibes(
     """
     detected: list[str] = []
 
-    for vibe, patterns in VIBE_PATTERNS.items():
+    for (
+        vibe,
+        patterns,
+    ) in VIBE_PATTERNS.items():
         if any(
             _contains_phrase(
                 text,
@@ -187,19 +195,29 @@ def _detect_vibes(
             )
             for pattern in patterns
         ):
-            detected.append(vibe)
+            detected.append(
+                vibe
+            )
 
     if party_size >= 4:
-        detected.append("group")
+        detected.append(
+            "group"
+        )
 
     if budget <= 80:
-        detected.append("budget")
+        detected.append(
+            "budget"
+        )
 
     if not detected:
-        detected.append("fun")
+        detected.append(
+            "fun"
+        )
 
     return list(
-        dict.fromkeys(detected)
+        dict.fromkeys(
+            detected
+        )
     )
 
 
@@ -229,12 +247,17 @@ def _detect_party_size(
         )
 
         return min(
-            max(value, 1),
+            max(
+                value,
+                1,
+            ),
             12,
         )
 
-    number_words_pattern = "|".join(
-        NUMBER_WORDS.keys()
+    number_words_pattern = (
+        "|".join(
+            NUMBER_WORDS.keys()
+        )
     )
 
     word_match = re.search(
@@ -256,12 +279,16 @@ def _detect_party_size(
     )
 
     if friends_match:
-        raw_value = friends_match.group(1)
+        raw_value = (
+            friends_match.group(1)
+        )
 
         friend_count = (
             int(raw_value)
             if raw_value.isdigit()
-            else NUMBER_WORDS[raw_value]
+            else NUMBER_WORDS[
+                raw_value
+            ]
         )
 
         if any(
@@ -275,7 +302,10 @@ def _detect_party_size(
             friend_count += 1
 
         return min(
-            max(friend_count, 1),
+            max(
+                friend_count,
+                1,
+            ),
             12,
         )
 
@@ -385,7 +415,10 @@ def _detect_food_preferences(
         ],
     }
 
-    for preference, patterns in food_patterns.items():
+    for (
+        preference,
+        patterns,
+    ) in food_patterns.items():
         if any(
             pattern in text
             for pattern in patterns
@@ -397,43 +430,112 @@ def _detect_food_preferences(
     return preferences
 
 
-def _detect_transportation(
+def _detect_explicit_transportation(
     text: str,
-) -> str:
-    if any(
-        phrase in text
-        for phrase in [
-            "no car",
-            "public transit",
-            "public transportation",
-            "train",
-            "subway",
-            "metro",
-            "bus",
-            "commuter rail",
-        ]
-    ):
-        return "public_transit"
+) -> str | None:
+    """
+    Detect an explicitly requested transport mode.
+
+    Returns None when the user did not specify one.
+    This lets PlanPilot distinguish between:
+        - an explicit transit request
+        - the default public-transit behavior
+    """
+
+    walking_patterns = [
+        "walk",
+        "walking",
+        "walking only",
+        "walk only",
+        "walkable",
+        "on foot",
+        "by foot",
+        "we want to walk",
+        "want to walk",
+        "prefer walking",
+        "prefer to walk",
+        "walking distance",
+        "walk between",
+        "walk between all the places",
+        "walk everywhere",
+    ]
+
+    driving_patterns = [
+        "drive",
+        "driving",
+        "by car",
+        "in the car",
+        "take the car",
+        "we have a car",
+        "have a car",
+        "rent a car",
+        "rental car",
+        "prefer driving",
+        "prefer to drive",
+    ]
+
+    transit_patterns = [
+        "no car",
+        "public transit",
+        "public transportation",
+        "train",
+        "subway",
+        "metro",
+        "bus",
+        "commuter rail",
+        "the t",
+        "take the t",
+        "mbta",
+        "transit",
+    ]
 
     if any(
-        phrase in text
-        for phrase in [
-            "walking only",
-            "walkable",
-            "on foot",
-        ]
+        _contains_phrase(
+            text,
+            phrase,
+        )
+        for phrase in walking_patterns
     ):
         return "walking"
 
     if any(
-        phrase in text
-        for phrase in [
-            "driving",
-            "we have a car",
-            "by car",
-        ]
+        _contains_phrase(
+            text,
+            phrase,
+        )
+        for phrase in driving_patterns
     ):
         return "driving"
+
+    if any(
+        _contains_phrase(
+            text,
+            phrase,
+        )
+        for phrase in transit_patterns
+    ):
+        return "public_transit"
+
+    return None
+
+
+def _detect_transportation(
+    text: str,
+) -> str:
+    """
+    Return the explicitly requested transport mode when present.
+
+    Public transit remains the default when the user does not
+    specify a transportation preference.
+    """
+    explicit_transport = (
+        _detect_explicit_transportation(
+            text
+        )
+    )
+
+    if explicit_transport:
+        return explicit_transport
 
     return "public_transit"
 
@@ -456,8 +558,13 @@ def _detect_city(
         "Somerville",
     ]
 
-    for candidate in common_cities:
-        if candidate.lower() in text:
+    for candidate in (
+        common_cities
+    ):
+        if (
+            candidate.lower()
+            in text
+        ):
             return candidate
 
     return "Boston"
@@ -466,7 +573,9 @@ def _detect_city(
 def _fallback_parse(
     text: str,
 ) -> ParsedPlanRequest:
-    lowered = _clean_text(text)
+    lowered = _clean_text(
+        text
+    )
 
     budget_match = re.search(
         r"(?:under|below|max(?:imum)?|budget(?: of)?|up to)"
@@ -486,13 +595,17 @@ def _fallback_parse(
     )
 
     budget = (
-        float(budget_match.group(1))
+        float(
+            budget_match.group(1)
+        )
         if budget_match
         else 200
     )
 
-    party_size = _detect_party_size(
-        lowered
+    party_size = (
+        _detect_party_size(
+            lowered
+        )
     )
 
     include_activity = any(
@@ -542,48 +655,74 @@ def _fallback_parse(
         ]
     )
 
-    if "date" in lowered and not (
-        include_activity
-        or include_dinner
-        or include_dessert
+    if (
+        "date" in lowered
+        and not (
+            include_activity
+            or include_dinner
+            or include_dessert
+        )
     ):
         include_activity = True
         include_dinner = True
 
-    if "outing" in lowered and not (
-        include_activity
-        or include_dinner
-        or include_dessert
+    if (
+        "outing" in lowered
+        and not (
+            include_activity
+            or include_dinner
+            or include_dessert
+        )
     ):
         include_activity = True
         include_dinner = True
 
     return ParsedPlanRequest(
-        city=_detect_city(lowered),
+        city=(
+            _detect_city(
+                lowered
+            )
+        ),
         budget=budget,
         party_size=party_size,
         max_travel_minutes=(
-            int(travel_match.group(1))
+            int(
+                travel_match.group(1)
+            )
             if travel_match
             else 30
         ),
-        vibes=_detect_vibes(
-            text=lowered,
-            party_size=party_size,
-            budget=budget,
+        vibes=(
+            _detect_vibes(
+                text=lowered,
+                party_size=party_size,
+                budget=budget,
+            )
         ),
-        include_activity=include_activity,
-        include_dinner=include_dinner,
-        include_dessert=include_dessert,
+        include_activity=(
+            include_activity
+        ),
+        include_dinner=(
+            include_dinner
+        ),
+        include_dessert=(
+            include_dessert
+        ),
         transportation=(
-            _detect_transportation(lowered)
+            _detect_transportation(
+                lowered
+            )
         ),
         start_time=(
             time_match.group(1).upper()
             if time_match
             else None
         ),
-        date_text=_detect_date(lowered),
+        date_text=(
+            _detect_date(
+                lowered
+            )
+        ),
         food_preferences=(
             _detect_food_preferences(
                 lowered
@@ -600,7 +739,9 @@ def parse_natural_language_request(
     )
 
     if not api_key:
-        return _fallback_parse(text)
+        return _fallback_parse(
+            text
+        )
 
     try:
         from openai import OpenAI
@@ -614,47 +755,61 @@ def parse_natural_language_request(
             "gpt-5",
         )
 
-        response = client.responses.create(
-            model=model,
-            input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Extract outing-planning requirements "
-                        "from the user's message. Return only "
-                        "valid JSON with exactly these keys: "
-                        "city, budget, party_size, "
-                        "max_travel_minutes, vibes, "
-                        "include_activity, include_dinner, "
-                        "include_dessert, transportation, "
-                        "start_time, date_text, "
-                        "food_preferences. "
-                        "vibes must be a JSON list and may "
-                        "contain multiple applicable intents, "
-                        "such as ['chill', 'rainy-day'] or "
-                        "['fun', 'group']. Supported intents "
-                        "include romantic, fun, chill, fancy, "
-                        "scenic, active, cultural, nightlife, "
-                        "family, foodie, budget, rainy-day, "
-                        "work-friendly, and group. "
-                        "Infer group when party_size is 4 or "
-                        "greater. transportation must be one "
-                        "of public_transit, walking, or driving. "
-                        "food_preferences must be a JSON list. "
-                        "Use sensible defaults when details "
-                        "are missing. Do not include markdown "
-                        "or explanation outside the JSON."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": text,
-                },
-            ],
+        response = (
+            client.responses.create(
+                model=model,
+                input=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Extract outing-planning requirements "
+                            "from the user's message. Return only "
+                            "valid JSON with exactly these keys: "
+                            "city, budget, party_size, "
+                            "max_travel_minutes, vibes, "
+                            "include_activity, include_dinner, "
+                            "include_dessert, transportation, "
+                            "start_time, date_text, "
+                            "food_preferences. "
+                            "vibes must be a JSON list and may "
+                            "contain multiple applicable intents, "
+                            "such as ['chill', 'rainy-day'] or "
+                            "['fun', 'group']. Supported intents "
+                            "include romantic, fun, chill, fancy, "
+                            "scenic, active, cultural, nightlife, "
+                            "family, foodie, budget, rainy-day, "
+                            "work-friendly, and group. "
+                            "Infer group when party_size is 4 or "
+                            "greater. transportation must be one "
+                            "of public_transit, walking, or driving. "
+                            "When the user explicitly says walk, "
+                            "walking, on foot, walkable, or asks "
+                            "to walk between places, transportation "
+                            "must be walking. When the user says "
+                            "drive, driving, by car, or says they "
+                            "have a car, transportation must be "
+                            "driving. Use public_transit when the "
+                            "user explicitly requests transit, "
+                            "train, subway, bus, metro, MBTA, "
+                            "or when no transportation preference "
+                            "is provided. "
+                            "food_preferences must be a JSON list. "
+                            "Use sensible defaults when details "
+                            "are missing. Do not include markdown "
+                            "or explanation outside the JSON."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": text,
+                    },
+                ],
+            )
         )
 
         raw_text = (
-            response.output_text.strip()
+            response.output_text
+            .strip()
         )
 
         data = json.loads(
@@ -662,13 +817,16 @@ def parse_natural_language_request(
         )
 
         validated = (
-            ParsedPlanRequest.model_validate(
+            ParsedPlanRequest
+            .model_validate(
                 data
             )
         )
 
-        fallback = _fallback_parse(
-            text
+        fallback = (
+            _fallback_parse(
+                text
+            )
         )
 
         validated.vibes = list(
@@ -680,12 +838,17 @@ def parse_natural_language_request(
             )
         )
 
-        if fallback.party_size != 2:
+        if (
+            fallback.party_size
+            != 2
+        ):
             validated.party_size = (
                 fallback.party_size
             )
 
-        if fallback.food_preferences:
+        if (
+            fallback.food_preferences
+        ):
             validated.food_preferences = list(
                 dict.fromkeys(
                     [
@@ -695,10 +858,25 @@ def parse_natural_language_request(
                 )
             )
 
+        explicit_transport = (
+            _detect_explicit_transportation(
+                _clean_text(
+                    text
+                )
+            )
+        )
+
+        if explicit_transport:
+            validated.transportation = (
+                explicit_transport
+            )
+
         return validated
 
     except Exception:
-        return _fallback_parse(text)
+        return _fallback_parse(
+            text
+        )
 
 
 def llm_is_configured() -> bool:
@@ -706,7 +884,9 @@ def llm_is_configured() -> bool:
     Return True when an OpenAI API key is available.
     """
     return bool(
-        os.getenv("OPENAI_API_KEY")
+        os.getenv(
+            "OPENAI_API_KEY"
+        )
     )
 
 
@@ -738,33 +918,38 @@ def explain_plan_with_llm(
             "gpt-5",
         )
 
-        response = client.responses.create(
-            model=model,
-            input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are PlanPilot, an outing-planning "
-                        "assistant. Explain why the supplied "
-                        "itinerary options match the user's "
-                        "request. Do not change venue names, "
-                        "prices, travel times, durations, or "
-                        "other validated facts. Keep the "
-                        "explanation concise and practical."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        plan,
-                        indent=2,
-                    ),
-                },
-            ],
+        response = (
+            client.responses.create(
+                model=model,
+                input=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are PlanPilot, an outing-planning "
+                            "assistant. Explain why the supplied "
+                            "itinerary options match the user's "
+                            "request. Do not change venue names, "
+                            "prices, travel times, durations, or "
+                            "other validated facts. Keep the "
+                            "explanation concise and practical."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            json.dumps(
+                                plan,
+                                indent=2,
+                            )
+                        ),
+                    },
+                ],
+            )
         )
 
         return (
-            response.output_text.strip()
+            response.output_text
+            .strip()
         )
 
     except Exception:

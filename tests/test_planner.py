@@ -326,3 +326,175 @@ def test_sample_venue_missing_hours_has_no_warning() -> None:
 
     assert plans
     assert plans[0].warnings == []
+
+
+
+from backend.app.models import PlanRequest, Venue
+from backend.app.planner import build_plans
+
+
+def test_plan_contains_route_legs() -> None:
+    request = PlanRequest(
+        city="Boston",
+        start_area="Back Bay",
+        budget_total=200,
+        party_size=2,
+        transport="walking",
+        vibe=["fun"],
+        must_include=[
+            "activity",
+            "dinner",
+        ],
+        food_preferences=[],
+        max_leg_minutes=60,
+    )
+
+    venues = [
+        Venue(
+            name="Test Activity",
+            category="activity",
+            area="Back Bay",
+            estimated_cost_per_person=20,
+            duration_minutes=60,
+            vibe=["fun"],
+            latitude=42.3507,
+            longitude=-71.0797,
+            source="sample",
+        ),
+        Venue(
+            name="Test Restaurant",
+            category="restaurant",
+            area="Downtown",
+            estimated_cost_per_person=30,
+            duration_minutes=60,
+            vibe=["fun"],
+            latitude=42.3550,
+            longitude=-71.0650,
+            source="sample",
+        ),
+    ]
+
+    plans = build_plans(
+        request=request,
+        venues=venues,
+        start_coordinates=(
+            42.3495,
+            -71.0810,
+        ),
+    )
+
+    assert plans
+    assert plans[0].route_legs
+    assert len(plans[0].route_legs) == 2
+
+
+def test_route_leg_names_follow_itinerary_order() -> None:
+    request = PlanRequest(
+        city="Boston",
+        start_area="Back Bay",
+        budget_total=200,
+        party_size=2,
+        transport="walking",
+        vibe=["fun"],
+        must_include=[
+            "activity",
+            "dinner",
+        ],
+        food_preferences=[],
+        max_leg_minutes=60,
+    )
+
+    venues = [
+        Venue(
+            name="Test Activity",
+            category="activity",
+            area="Back Bay",
+            estimated_cost_per_person=20,
+            duration_minutes=60,
+            vibe=["fun"],
+            latitude=42.3507,
+            longitude=-71.0797,
+            source="sample",
+        ),
+        Venue(
+            name="Test Restaurant",
+            category="restaurant",
+            area="Downtown",
+            estimated_cost_per_person=30,
+            duration_minutes=60,
+            vibe=["fun"],
+            latitude=42.3550,
+            longitude=-71.0650,
+            source="sample",
+        ),
+    ]
+
+    plans = build_plans(
+        request=request,
+        venues=venues,
+        start_coordinates=(
+            42.3495,
+            -71.0810,
+        ),
+    )
+
+    first_plan = plans[0]
+
+    assert first_plan.route_legs[0].from_name == "Back Bay"
+    assert first_plan.route_legs[0].to_name == "Test Activity"
+
+    assert first_plan.route_legs[1].from_name == "Test Activity"
+    assert first_plan.route_legs[1].to_name == "Test Restaurant"
+
+
+def test_route_leg_provider_is_exposed() -> None:
+    request = PlanRequest(
+        city="Boston",
+        start_area="Back Bay",
+        budget_total=200,
+        party_size=2,
+        transport="walking",
+        vibe=["fun"],
+        must_include=[
+            "activity",
+            "dinner",
+        ],
+        food_preferences=[],
+        max_leg_minutes=60,
+    )
+
+    venues = [
+        Venue(
+            name="Test Activity",
+            category="activity",
+            area="Back Bay",
+            estimated_cost_per_person=20,
+            duration_minutes=60,
+            vibe=["fun"],
+            latitude=42.3507,
+            longitude=-71.0797,
+            source="sample",
+        ),
+        Venue(
+            name="Test Restaurant",
+            category="restaurant",
+            area="Downtown",
+            estimated_cost_per_person=30,
+            duration_minutes=60,
+            vibe=["fun"],
+            latitude=42.3550,
+            longitude=-71.0650,
+            source="sample",
+        ),
+    ]
+
+    plans = build_plans(
+        request=request,
+        venues=venues,
+        start_coordinates=(
+            42.3495,
+            -71.0810,
+        ),
+    )
+
+    assert plans[0].route_legs[0].provider

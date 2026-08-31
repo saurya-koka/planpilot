@@ -7,3 +7,7 @@ python-dotenv>=1.0
 openai>=1.0
 pytest>=8.0
 httpx>=0.27
+pydeck>=0.9
+langgraph>=0.2
+chromadb
+mcp[cli]>=2,<3

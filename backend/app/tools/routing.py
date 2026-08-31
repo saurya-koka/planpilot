@@ -1,8 +1,114 @@
 from __future__ import annotations
 
-from math import asin, ceil, cos, radians, sin, sqrt
+import os
+from math import (
+    asin,
+    ceil,
+    cos,
+    radians,
+    sin,
+    sqrt,
+)
+from typing import Any
 
-from backend.app.models import TransportMode
+import requests
+
+from backend.app.models import (
+    RoutePoint,
+    RouteResult,
+    TransportMode,
+)
+
+
+GEOAPIFY_ROUTING_URL = (
+    "https://api.geoapify.com/v1/routing"
+)
+
+
+# ------------------------------------------------------------------
+# ROUTE CACHE
+# ------------------------------------------------------------------
+
+RouteCacheKey = tuple[
+    float,
+    float,
+    float,
+    float,
+    str,
+    str,
+]
+
+
+_ROUTE_CACHE: dict[
+    RouteCacheKey,
+    RouteResult,
+] = {}
+
+
+def _rounded_coordinate(
+    value: float,
+) -> float:
+    """
+    Round coordinates before using them as cache keys.
+
+    Six decimal places is roughly sub-meter precision and prevents
+    tiny floating-point differences from creating duplicate route
+    requests.
+    """
+    return round(
+        float(value),
+        6,
+    )
+
+
+def _route_cache_key(
+    *,
+    latitude_a: float,
+    longitude_a: float,
+    latitude_b: float,
+    longitude_b: float,
+    transport: TransportMode,
+    provider: str,
+) -> RouteCacheKey:
+    return (
+        _rounded_coordinate(
+            latitude_a
+        ),
+        _rounded_coordinate(
+            longitude_a
+        ),
+        _rounded_coordinate(
+            latitude_b
+        ),
+        _rounded_coordinate(
+            longitude_b
+        ),
+        str(transport),
+        provider,
+    )
+
+
+def clear_route_cache() -> None:
+    """
+    Clear PlanPilot's in-memory routing cache.
+
+    Primarily useful for tests and development.
+    """
+    _ROUTE_CACHE.clear()
+
+
+def route_cache_size() -> int:
+    """
+    Return the number of cached routes.
+    """
+    return len(
+        _ROUTE_CACHE
+    )
+
+
+# ------------------------------------------------------------------
+# DISTANCE + FALLBACK ESTIMATION
+# ------------------------------------------------------------------
 
 
 def haversine_distance_km(
@@ -18,26 +124,60 @@ def haversine_distance_km(
     """
     earth_radius_km = 6371.0
 
-    lat_a = radians(latitude_a)
-    lon_a = radians(longitude_a)
-    lat_b = radians(latitude_b)
-    lon_b = radians(longitude_b)
+    lat_a = radians(
+        latitude_a
+    )
 
-    latitude_difference = lat_b - lat_a
-    longitude_difference = lon_b - lon_a
+    lon_a = radians(
+        longitude_a
+    )
+
+    lat_b = radians(
+        latitude_b
+    )
+
+    lon_b = radians(
+        longitude_b
+    )
+
+    latitude_difference = (
+        lat_b
+        - lat_a
+    )
+
+    longitude_difference = (
+        lon_b
+        - lon_a
+    )
 
     value = (
-        sin(latitude_difference / 2) ** 2
+        sin(
+            latitude_difference
+            / 2
+        )
+        ** 2
         + cos(lat_a)
         * cos(lat_b)
-        * sin(longitude_difference / 2) ** 2
+        * sin(
+            longitude_difference
+            / 2
+        )
+        ** 2
     )
 
-    central_angle = 2 * asin(
-        sqrt(value)
+    central_angle = (
+        2
+        * asin(
+            sqrt(
+                value
+            )
+        )
     )
 
-    return earth_radius_km * central_angle
+    return (
+        earth_radius_km
+        * central_angle
+    )
 
 
 def estimate_travel_minutes(
@@ -48,37 +188,57 @@ def estimate_travel_minutes(
     transport: TransportMode,
 ) -> int:
     """
-    Estimate travel time using straight-line distance.
+    Fast deterministic travel-time estimate.
 
-    These are temporary estimates until PlanPilot integrates a
-    live routing provider.
+    This is intentionally inexpensive and is used both as:
+      1. the fallback when live routing fails
+      2. the preliminary routing estimate while PlanPilot ranks
+         candidate itineraries before calling the live provider
     """
-    distance_km = haversine_distance_km(
-        latitude_a=latitude_a,
-        longitude_a=longitude_a,
-        latitude_b=latitude_b,
-        longitude_b=longitude_b,
+    distance_km = (
+        haversine_distance_km(
+            latitude_a=(
+                latitude_a
+            ),
+            longitude_a=(
+                longitude_a
+            ),
+            latitude_b=(
+                latitude_b
+            ),
+            longitude_b=(
+                longitude_b
+            ),
+        )
     )
 
     if distance_km < 0.15:
         return 3
 
     if transport == "walking":
-        # Walking routes are normally longer than straight-line
-        # distance, so apply a route-distance multiplier.
-        route_distance_km = distance_km * 1.25
+        route_distance_km = (
+            distance_km
+            * 1.25
+        )
+
         speed_km_per_hour = 4.8
         wait_minutes = 0
 
     elif transport == "driving":
-        route_distance_km = distance_km * 1.3
+        route_distance_km = (
+            distance_km
+            * 1.3
+        )
+
         speed_km_per_hour = 24
         wait_minutes = 4
 
     else:
-        # Public transit includes indirect routing and average
-        # waiting/transfer time.
-        route_distance_km = distance_km * 1.35
+        route_distance_km = (
+            distance_km
+            * 1.35
+        )
+
         speed_km_per_hour = 18
         wait_minutes = 8
 
@@ -94,4 +254,620 @@ def estimate_travel_minutes(
             movement_minutes
             + wait_minutes
         ),
+    )
+
+
+def estimate_route_result(
+    *,
+    latitude_a: float,
+    longitude_a: float,
+    latitude_b: float,
+    longitude_b: float,
+    transport: TransportMode,
+) -> RouteResult:
+    """
+    Build a normalized estimated RouteResult.
+    """
+    duration_minutes = (
+        estimate_travel_minutes(
+            latitude_a=(
+                latitude_a
+            ),
+            longitude_a=(
+                longitude_a
+            ),
+            latitude_b=(
+                latitude_b
+            ),
+            longitude_b=(
+                longitude_b
+            ),
+            transport=(
+                transport
+            ),
+        )
+    )
+
+    straight_line_km = (
+        haversine_distance_km(
+            latitude_a=(
+                latitude_a
+            ),
+            longitude_a=(
+                longitude_a
+            ),
+            latitude_b=(
+                latitude_b
+            ),
+            longitude_b=(
+                longitude_b
+            ),
+        )
+    )
+
+    if transport == "walking":
+        route_multiplier = 1.25
+
+    elif transport == "driving":
+        route_multiplier = 1.3
+
+    else:
+        route_multiplier = 1.35
+
+    estimated_distance_meters = int(
+        straight_line_km
+        * route_multiplier
+        * 1000
+    )
+
+    return RouteResult(
+        duration_minutes=(
+            duration_minutes
+        ),
+        distance_meters=(
+            estimated_distance_meters
+        ),
+        mode=transport,
+        geometry=[
+            RoutePoint(
+                latitude=(
+                    latitude_a
+                ),
+                longitude=(
+                    longitude_a
+                ),
+            ),
+            RoutePoint(
+                latitude=(
+                    latitude_b
+                ),
+                longitude=(
+                    longitude_b
+                ),
+            ),
+        ],
+        provider="estimate",
+        is_live=False,
+        fallback_used=True,
+    )
+
+
+# ------------------------------------------------------------------
+# GEOAPIFY
+# ------------------------------------------------------------------
+
+
+def geoapify_mode(
+    transport: TransportMode,
+) -> str:
+    """
+    Map PlanPilot transport modes to Geoapify routing modes.
+    """
+    mapping = {
+        "walking": "walk",
+        "driving": "drive",
+    }
+
+    return mapping.get(
+        transport,
+        "walk",
+    )
+
+
+def _extract_geometry_points(
+    geometry: (
+        dict[str, Any]
+        | None
+    ),
+) -> list[RoutePoint]:
+    """
+    Convert GeoJSON LineString or MultiLineString coordinates
+    into PlanPilot RoutePoint objects.
+    """
+    if not geometry:
+        return []
+
+    geometry_type = (
+        geometry.get(
+            "type"
+        )
+    )
+
+    coordinates = (
+        geometry.get(
+            "coordinates"
+        )
+    )
+
+    if not isinstance(
+        coordinates,
+        list,
+    ):
+        return []
+
+    raw_points: list[
+        list[float]
+    ] = []
+
+    if (
+        geometry_type
+        == "LineString"
+    ):
+        raw_points = [
+            point
+            for point
+            in coordinates
+            if (
+                isinstance(
+                    point,
+                    list,
+                )
+                and len(
+                    point
+                )
+                >= 2
+            )
+        ]
+
+    elif (
+        geometry_type
+        == "MultiLineString"
+    ):
+        for segment in (
+            coordinates
+        ):
+            if not isinstance(
+                segment,
+                list,
+            ):
+                continue
+
+            for point in segment:
+                if (
+                    isinstance(
+                        point,
+                        list,
+                    )
+                    and len(
+                        point
+                    )
+                    >= 2
+                ):
+                    raw_points.append(
+                        point
+                    )
+
+    route_points: list[
+        RoutePoint
+    ] = []
+
+    for point in raw_points:
+        longitude = (
+            point[0]
+        )
+
+        latitude = (
+            point[1]
+        )
+
+        if not isinstance(
+            latitude,
+            (
+                int,
+                float,
+            ),
+        ):
+            continue
+
+        if not isinstance(
+            longitude,
+            (
+                int,
+                float,
+            ),
+        ):
+            continue
+
+        route_points.append(
+            RoutePoint(
+                latitude=float(
+                    latitude
+                ),
+                longitude=float(
+                    longitude
+                ),
+            )
+        )
+
+    return route_points
+
+
+def _parse_geoapify_route(
+    data: dict[
+        str,
+        Any,
+    ],
+    *,
+    transport: TransportMode,
+) -> RouteResult | None:
+    """
+    Normalize a Geoapify GeoJSON routing response.
+    """
+    features = data.get(
+        "features"
+    )
+
+    if not isinstance(
+        features,
+        list,
+    ):
+        return None
+
+    if not features:
+        return None
+
+    feature = (
+        features[0]
+    )
+
+    if not isinstance(
+        feature,
+        dict,
+    ):
+        return None
+
+    properties = (
+        feature.get(
+            "properties",
+            {},
+        )
+    )
+
+    if not isinstance(
+        properties,
+        dict,
+    ):
+        return None
+
+    time_seconds = (
+        properties.get(
+            "time"
+        )
+    )
+
+    distance_meters = (
+        properties.get(
+            "distance"
+        )
+    )
+
+    if not isinstance(
+        time_seconds,
+        (
+            int,
+            float,
+        ),
+    ):
+        return None
+
+    if not isinstance(
+        distance_meters,
+        (
+            int,
+            float,
+        ),
+    ):
+        return None
+
+    duration_minutes = max(
+        1,
+        ceil(
+            float(
+                time_seconds
+            )
+            / 60
+        ),
+    )
+
+    geometry = feature.get(
+        "geometry"
+    )
+
+    parsed_geometry = (
+        _extract_geometry_points(
+            (
+                geometry
+                if isinstance(
+                    geometry,
+                    dict,
+                )
+                else None
+            )
+        )
+    )
+
+    return RouteResult(
+        duration_minutes=(
+            duration_minutes
+        ),
+        distance_meters=max(
+            0,
+            int(
+                distance_meters
+            ),
+        ),
+        mode=transport,
+        geometry=(
+            parsed_geometry
+        ),
+        provider="geoapify",
+        is_live=True,
+        fallback_used=False,
+    )
+
+
+def get_geoapify_route(
+    *,
+    latitude_a: float,
+    longitude_a: float,
+    latitude_b: float,
+    longitude_b: float,
+    transport: TransportMode,
+) -> RouteResult | None:
+    """
+    Request one live route from Geoapify.
+
+    Returns None if live routing cannot be used.
+    """
+    api_key = os.getenv(
+        "GEOAPIFY_API_KEY",
+        "",
+    ).strip()
+
+    if not api_key:
+        return None
+
+    # Transit currently remains on PlanPilot's deterministic
+    # fallback until a dedicated transit routing provider is added.
+    if (
+        transport
+        == "public_transit"
+    ):
+        return None
+
+    timeout_seconds = float(
+        os.getenv(
+            "ROUTING_TIMEOUT_SECONDS",
+            "10",
+        )
+    )
+
+    waypoints = (
+        f"{latitude_a},"
+        f"{longitude_a}"
+        "|"
+        f"{latitude_b},"
+        f"{longitude_b}"
+    )
+
+    params = {
+        "waypoints": (
+            waypoints
+        ),
+        "mode": (
+            geoapify_mode(
+                transport
+            )
+        ),
+        "apiKey": (
+            api_key
+        ),
+    }
+
+    try:
+        response = requests.get(
+            GEOAPIFY_ROUTING_URL,
+            params=params,
+            timeout=(
+                timeout_seconds
+            ),
+        )
+
+        response.raise_for_status()
+
+        data = (
+            response.json()
+        )
+
+    except (
+        requests.RequestException,
+        ValueError,
+    ):
+        return None
+
+    if not isinstance(
+        data,
+        dict,
+    ):
+        return None
+
+    return (
+        _parse_geoapify_route(
+            data,
+            transport=(
+                transport
+            ),
+        )
+    )
+
+
+# ------------------------------------------------------------------
+# MAIN ROUTING INTERFACE
+# ------------------------------------------------------------------
+
+
+def get_route(
+    *,
+    latitude_a: float,
+    longitude_a: float,
+    latitude_b: float,
+    longitude_b: float,
+    transport: TransportMode,
+    prefer_live: bool = True,
+) -> RouteResult:
+    """
+    Main routing interface used by PlanPilot.
+
+    prefer_live=True:
+        Use cached live routing when possible, then Geoapify,
+        then deterministic fallback.
+
+    prefer_live=False:
+        Skip all network calls and immediately use the deterministic
+        route estimate. This is used during preliminary candidate
+        ranking so PlanPilot does not make hundreds of API calls.
+    """
+    if not prefer_live:
+        return (
+            estimate_route_result(
+                latitude_a=(
+                    latitude_a
+                ),
+                longitude_a=(
+                    longitude_a
+                ),
+                latitude_b=(
+                    latitude_b
+                ),
+                longitude_b=(
+                    longitude_b
+                ),
+                transport=(
+                    transport
+                ),
+            )
+        )
+
+    provider = os.getenv(
+        "ROUTING_PROVIDER",
+        "geoapify",
+    ).strip().lower()
+
+    cache_key = (
+        _route_cache_key(
+            latitude_a=(
+                latitude_a
+            ),
+            longitude_a=(
+                longitude_a
+            ),
+            latitude_b=(
+                latitude_b
+            ),
+            longitude_b=(
+                longitude_b
+            ),
+            transport=(
+                transport
+            ),
+            provider=(
+                provider
+            ),
+        )
+    )
+
+    cached_route = (
+        _ROUTE_CACHE.get(
+            cache_key
+        )
+    )
+
+    if cached_route is not None:
+        return (
+            cached_route.model_copy(
+                deep=True
+            )
+        )
+
+    live_route: (
+        RouteResult
+        | None
+    ) = None
+
+    if provider == "geoapify":
+        live_route = (
+            get_geoapify_route(
+                latitude_a=(
+                    latitude_a
+                ),
+                longitude_a=(
+                    longitude_a
+                ),
+                latitude_b=(
+                    latitude_b
+                ),
+                longitude_b=(
+                    longitude_b
+                ),
+                transport=(
+                    transport
+                ),
+            )
+        )
+
+    if live_route is not None:
+        _ROUTE_CACHE[
+            cache_key
+        ] = (
+            live_route.model_copy(
+                deep=True
+            )
+        )
+
+        return (
+            live_route
+        )
+
+    fallback_route = (
+        estimate_route_result(
+            latitude_a=(
+                latitude_a
+            ),
+            longitude_a=(
+                longitude_a
+            ),
+            latitude_b=(
+                latitude_b
+            ),
+            longitude_b=(
+                longitude_b
+            ),
+            transport=(
+                transport
+            ),
+        )
+    )
+
+    return (
+        fallback_route
     )
