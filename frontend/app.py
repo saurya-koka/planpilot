@@ -1644,7 +1644,7 @@ if generate_live_plans:
             ):
                 result = request_json(
                     endpoint=(
-                        "/plan-from-text/live"
+                        "/plan-from-text/live/"
                     ),
                     payload=payload,
                 )
