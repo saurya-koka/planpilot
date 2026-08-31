@@ -13,10 +13,43 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-BACKEND_URL = os.getenv(
-    "BACKEND_URL",
-    "http://localhost:8000",
-).rstrip("/")
+
+def get_backend_url() -> str:
+    """
+    Resolve the PlanPilot backend URL.
+
+    Streamlit Community Cloud stores deployment values in st.secrets.
+    Local development continues to use the .env environment variable.
+    """
+
+    try:
+        secret_backend_url = st.secrets.get(
+            "BACKEND_URL"
+        )
+
+        if secret_backend_url:
+            return (
+                str(
+                    secret_backend_url
+                )
+                .strip()
+                .rstrip("/")
+            )
+
+    except Exception:
+        pass
+
+    return (
+        os.getenv(
+            "BACKEND_URL",
+            "http://localhost:8000",
+        )
+        .strip()
+        .rstrip("/")
+    )
+
+
+BACKEND_URL = get_backend_url()
 
 
 st.set_page_config(
@@ -300,7 +333,7 @@ def request_json(
     response = requests.post(
         f"{BACKEND_URL}{endpoint}",
         json=payload,
-        timeout=90,
+        timeout=180,
     )
 
     response.raise_for_status()
